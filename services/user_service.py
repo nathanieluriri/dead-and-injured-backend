@@ -1,0 +1,99 @@
+# ============================================================================
+# USER SERVICE
+# ============================================================================
+# This file was auto-generated on: 2025-09-10 09:59:15 WAT
+# It contains  asynchrounous functions that make use of the repo functions 
+# 
+# ============================================================================
+
+from bson import ObjectId
+from fastapi import HTTPException
+from typing import List
+
+from repositories.user import (
+    create_user,
+    get_user,
+    get_users,
+    update_user,
+    delete_user,
+)
+from schemas.user import UserCreate, UserUpdate, UserOut
+
+
+async def add_user(user_data: UserCreate) -> UserOut:
+    """adds an entry of UserCreate to the database and returns an object
+
+    Returns:
+        _type_: UserOut
+    """
+    return await create_user(user_data)
+
+
+async def remove_user(user_id: str):
+    """deletes a field from the database and removes UserCreateobject 
+
+    Raises:
+        HTTPException 400: Invalid user ID format
+        HTTPException 404:  User not found
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    filter_dict = {"_id": ObjectId(user_id)}
+    result = await delete_user(filter_dict)
+
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+
+
+async def retrieve_user_by_user_id(id: str) -> UserOut:
+    """Retrieves user object based specific Id 
+
+    Raises:
+        HTTPException 404(not found): if  User not found in the db
+        HTTPException 400(bad request): if  Invalid user ID format
+
+    Returns:
+        _type_: UserOut
+    """
+    if not ObjectId.is_valid(id):
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    filter_dict = {"_id": ObjectId(id)}
+    result = await get_user(filter_dict)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return result
+
+
+async def retrieve_users(start=0,stop=100) -> List[UserOut]:
+    """Retrieves UserOut Objects in a list
+
+    Returns:
+        _type_: UserOut
+    """
+    return await get_users(start=start,stop=stop)
+
+
+async def update_user_by_id(user_id: str, user_data: UserUpdate) -> UserOut:
+    """_summary_
+
+    Raises:
+        HTTPException 404(not found): if User not found or update failed
+        HTTPException 400(not found): Invalid user ID format
+
+    Returns:
+        _type_: UserOut
+    """
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(status_code=400, detail="Invalid user ID format")
+
+    filter_dict = {"_id": ObjectId(user_id)}
+    result = await update_user(filter_dict, user_data)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found or update failed")
+
+    return result
