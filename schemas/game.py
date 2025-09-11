@@ -13,6 +13,9 @@ import time
 
 class GameBase(BaseModel):
     # Add other fields here 
+    creator_secret_id:str
+    joiner_secret_id:Optional[str]=None
+    status:GameStatus
     pass
 
 class GameCreate(GameBase):
@@ -21,7 +24,9 @@ class GameCreate(GameBase):
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 class GameUpdate(BaseModel):
-    # Add other fields here 
+    # Add other fields here
+    joiner_secret_id:Optional[str]=None
+    status:GameStatus 
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 class GameOut(GameBase):

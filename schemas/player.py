@@ -11,8 +11,11 @@ from schemas.imports import *
 from pydantic import Field
 import time
 
+
 class PlayerBase(BaseModel):
-    # Add other fields here 
+    user_id:str
+    game_id:str
+    player_type:PlayerType
     pass
 
 class PlayerCreate(PlayerBase):

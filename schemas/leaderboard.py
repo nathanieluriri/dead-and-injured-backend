@@ -11,8 +11,13 @@ from schemas.imports import *
 from pydantic import Field
 import time
 
+
 class LeaderboardBase(BaseModel):
     # Add other fields here 
+    user_id:str
+    email:EmailStr
+    score:int
+    rank:int
     pass
 
 class LeaderboardCreate(LeaderboardBase):

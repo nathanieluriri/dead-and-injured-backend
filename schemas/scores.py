@@ -13,6 +13,8 @@ import time
 
 class ScoresBase(BaseModel):
     # Add other fields here 
+    player_id:str
+    match_result:MatchResult
     pass
 
 class ScoresCreate(ScoresBase):

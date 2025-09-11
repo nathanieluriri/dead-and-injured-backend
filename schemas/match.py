@@ -12,7 +12,9 @@ from pydantic import Field
 import time
 
 class MatchBase(BaseModel):
-    # Add other fields here 
+    player_id:str
+    game_id:str
+    
     pass
 
 class MatchCreate(MatchBase):
@@ -29,7 +31,8 @@ class MatchOut(MatchBase):
     id: Optional[str] =None
     date_created: Optional[int] = None
     last_updated: Optional[int] = None
-    
+    dead:int
+    injured:int
     @model_validator(mode='before')
     def set_dynamic_values(cls,values):
         values['id']= str(values.get('_id'))

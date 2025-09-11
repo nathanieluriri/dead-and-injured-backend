@@ -10,16 +10,21 @@
 from schemas.imports import *
 from pydantic import Field
 import time
-
+from security.hash import hash_password
 class UserBase(BaseModel):
     # Add other fields here 
+    email:EmailStr
+    password:str
     pass
 
 class UserCreate(UserBase):
     # Add other fields here 
     date_created: int = Field(default_factory=lambda: int(time.time()))
     last_updated: int = Field(default_factory=lambda: int(time.time()))
-
+    @model_validator(mode='after')
+    def obscure_password(self):
+        self.password=hash_password(self.password)
+        return self
 class UserUpdate(BaseModel):
     # Add other fields here 
     last_updated: int = Field(default_factory=lambda: int(time.time()))

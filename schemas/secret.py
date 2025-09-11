@@ -13,6 +13,8 @@ import time
 
 class SecretBase(BaseModel):
     # Add other fields here 
+    secret:str
+    player_id:str
     pass
 
 class SecretCreate(SecretBase):
