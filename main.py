@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from schemas.response_schema import APIResponse
 
-app = FastAPI(root_path="/v1")
+app = FastAPI(root_path="/api/v1")
 
 app.add_middleware(
     CORSMiddleware,

@@ -17,7 +17,10 @@ from repositories.user import (
     update_user,
     delete_user,
 )
-from schemas.user import UserCreate, UserUpdate, UserOut
+from schemas.user import UserCreate, UserUpdate, UserOut,UserBase,UserRefresh
+from security.hash import check_password
+from security.encrypting_jwt import create_jwt_member_token
+from repositories.tokens_repo import add_refresh_tokens, add_access_tokens, accessTokenCreate,accessTokenOut,refreshTokenCreate
 
 
 async def add_user(user_data: UserCreate) -> UserOut:
@@ -26,8 +29,35 @@ async def add_user(user_data: UserCreate) -> UserOut:
     Returns:
         _type_: UserOut
     """
-    return await create_user(user_data)
+    user =  await get_user(filter_dict={"email":user_data.email})
+    if user==None:
+        new_user= await create_user(user_data)
+        access_token = await add_access_tokens(token_data=accessTokenCreate(userId=new_user.id))
+        refresh_token  = await add_refresh_tokens(token_data=refreshTokenCreate(userId=new_user.id,previousAccessToken=access_token.accesstoken))
+        new_user.password=""
+        new_user.access_token= access_token.accesstoken 
+        new_user.refresh_token = refresh_token.refreshtoken
+        return new_user
+    else:
+        raise HTTPException(status_code=409,detail="User Already exists")
 
+async def authenticate_user(user_data:UserBase )->UserOut:
+    user = await get_user(filter_dict={"email":user_data.email})
+
+    if user != None:
+        if check_password(password=user_data.password,hashed=user.password ):
+            user.password=""
+            access_token = await add_access_tokens(token_data=accessTokenCreate(userId=user.id))
+            refresh_token  = await add_refresh_tokens(token_data=refreshTokenCreate(userId=user.id,previousAccessToken=access_token.accesstoken))
+            user.access_token= access_token.accesstoken 
+            user.refresh_token = refresh_token.refreshtoken
+            return user
+        else:
+            raise HTTPException(status_code=401, detail="Unathorized, Invalid Login credentials")
+    else:
+        raise HTTPException(status_code=404,detail="User not found")
+
+async def refresh_user_tokens_reduce_number_of_logins(user_refresh_data:UserRefresh):
 
 async def remove_user(user_id: str):
     """deletes a field from the database and removes UserCreateobject 
@@ -97,3 +127,4 @@ async def update_user_by_id(user_id: str, user_data: UserUpdate) -> UserOut:
         raise HTTPException(status_code=404, detail="User not found or update failed")
 
     return result
+

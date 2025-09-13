@@ -18,6 +18,7 @@ async def create_user(user_data: UserCreate) -> UserOut:
     user_dict = user_data.model_dump()
     result =await db.users.insert_one(user_dict)
     result = await db.users.find_one(filter={"_id":result.inserted_id})
+  
     returnable_result = UserOut(**result)
     return returnable_result
 
@@ -49,7 +50,7 @@ async def get_users(filter_dict: dict = {},start=0,stop=100) -> List[UserOut]:
 
         async for doc in cursor:
             user_list.append(UserOut(**doc))
-
+        
         return user_list
 
     except Exception as e:
