@@ -19,7 +19,7 @@ class UserBase(BaseModel):
 
 class UserRefresh(BaseModel):
     # Add other fields here 
-    access_token:str
+    refresh_token:str
     pass
 
 

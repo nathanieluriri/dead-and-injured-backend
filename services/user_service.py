@@ -21,7 +21,7 @@ from schemas.user import UserCreate, UserUpdate, UserOut,UserBase,UserRefresh
 from security.hash import check_password
 from security.encrypting_jwt import create_jwt_member_token
 from repositories.tokens_repo import add_refresh_tokens, add_access_tokens, accessTokenCreate,accessTokenOut,refreshTokenCreate
-
+from repositories.tokens_repo import get_refresh_tokens,get_access_tokens,delete_access_token,delete_refresh_token,delete_all_tokens_with_user_id
 
 async def add_user(user_data: UserCreate) -> UserOut:
     """adds an entry of UserCreate to the database and returns an object
@@ -57,8 +57,26 @@ async def authenticate_user(user_data:UserBase )->UserOut:
     else:
         raise HTTPException(status_code=404,detail="User not found")
 
-async def refresh_user_tokens_reduce_number_of_logins(user_refresh_data:UserRefresh):
-
+async def refresh_user_tokens_reduce_number_of_logins(user_refresh_data:UserRefresh,expired_access_token):
+    refreshObj= await get_refresh_tokens(user_refresh_data.refresh_token)
+    if refreshObj:
+        if refreshObj.previousAccessToken==expired_access_token:
+            user = await get_user(filter_dict={"_id":ObjectId(refreshObj.userId)})
+            
+            if user!= None:
+                    access_token = await add_access_tokens(token_data=accessTokenCreate(userId=user.id))
+                    refresh_token  = await add_refresh_tokens(token_data=refreshTokenCreate(userId=user.id,previousAccessToken=access_token.accesstoken))
+                    user.access_token= access_token.accesstoken 
+                    user.refresh_token = refresh_token.refreshtoken
+                    await delete_access_token(accessToken=expired_access_token)
+                    await delete_refresh_token(refreshToken=user_refresh_data.refresh_token)
+                    return user
+     
+        await delete_refresh_token(refreshToken=user_refresh_data.refresh_token)
+        await delete_access_token(accessToken=expired_access_token)
+  
+    raise HTTPException(status_code=404,detail="Invalid refresh token ")  
+        
 async def remove_user(user_id: str):
     """deletes a field from the database and removes UserCreateobject 
 
@@ -71,6 +89,7 @@ async def remove_user(user_id: str):
 
     filter_dict = {"_id": ObjectId(user_id)}
     result = await delete_user(filter_dict)
+    await delete_all_tokens_with_user_id(userId=user_id)
 
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")

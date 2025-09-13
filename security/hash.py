@@ -9,5 +9,5 @@ def hash_password(password: str|bytes) -> bytes:
 
 
 def check_password(password: str, hashed: str) -> bool:
-    """Compare plaintext password with bcrypt hash string."""
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+    return bcrypt.checkpw(password.encode('utf-8'), hashed)
