@@ -13,7 +13,7 @@ import time
 
 class SecretBase(BaseModel):
     # Add other fields here 
-    secret:str
+    secret:SecretStr
     player_id:str
     pass
 

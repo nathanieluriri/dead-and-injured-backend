@@ -15,7 +15,8 @@ from typing import List,Optional
 from schemas.game import GameUpdate, GameCreate, GameOut
 
 async def create_game(game_data: GameCreate) -> GameOut:
-    game_dict = game_data.model_dump()
+    game_dict = game_data.model_dump(mode='json')
+
     result =await db.games.insert_one(game_dict)
     result = await db.games.find_one(filter={"_id":result.inserted_id})
     returnable_result = GameOut(**result)
@@ -60,10 +61,10 @@ async def get_games(filter_dict: dict = {},start=0,stop=100) -> List[GameOut]:
 async def update_game(filter_dict: dict, game_data: GameUpdate) -> GameOut:
     result = await db.games.find_one_and_update(
         filter_dict,
-        {"$set": game_data.model_dump()},
+        {"$set": game_data.model_dump(exclude_none=True)},
         return_document=ReturnDocument.AFTER
     )
-    returnable_result = GameOut(**result)
+    returnable_result = result
     return returnable_result
 
 async def delete_game(filter_dict: dict):

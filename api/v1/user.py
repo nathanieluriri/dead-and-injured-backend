@@ -25,7 +25,7 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 @router.get("/{start}/{stop}", response_model=APIResponse[List[UserOut]],response_model_exclude_none=True,dependencies=[Depends(verify_token)])
 async def list_users(start:int= 0, stop:int=100):
-    items = await retrieve_users(start=0,stop=100)
+    items = await retrieve_users(start,stop)
     return APIResponse(status_code=200, data=items, detail="Fetched successfully")
 
 @router.get("/me", response_model=APIResponse[UserOut],dependencies=[Depends(verify_token)],response_model_exclude_none=True)
@@ -57,6 +57,6 @@ async def refresh_user_tokens(user_data:UserRefresh,token:accessTokenOut = Depen
 
 
 @router.delete("/account",dependencies=[Depends(verify_token)])
-async def delete_user_account(token:accessTokenOut = Depends(verify_token_to_refresh)):
+async def delete_user_account(token:accessTokenOut = Depends(verify_token)):
     result = await remove_user(user_id=token.userId)
     return result

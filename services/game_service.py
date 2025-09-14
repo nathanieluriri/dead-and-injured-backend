@@ -17,7 +17,7 @@ from repositories.game import (
     update_game,
     delete_game,
 )
-from schemas.game import GameCreate, GameUpdate, GameOut
+from schemas.game import GameCreate, GameUpdate, GameOut,GameStatus,GameSettings
 
 
 async def add_game(game_data: GameCreate) -> GameOut:
@@ -76,6 +76,13 @@ async def retrieve_games(start=0,stop=100) -> List[GameOut]:
     """
     return await get_games(start=start,stop=stop)
 
+async def retrieve_available_games(start=0,stop=100) -> List[GameOut]:
+    """Retrieves GameOut Objects in a list
+
+    Returns:
+        _type_: GameOut
+    """
+    return await get_games(filter_dict={"status":GameStatus.waiting,"settings.is_public": True},start=start,stop=stop)
 
 async def update_game_by_id(game_id: str, game_data: GameUpdate) -> GameOut:
     """_summary_
@@ -91,6 +98,13 @@ async def update_game_by_id(game_id: str, game_data: GameUpdate) -> GameOut:
         raise HTTPException(status_code=400, detail="Invalid game ID format")
 
     filter_dict = {"_id": ObjectId(game_id)}
+    gameObj = await get_game(filter_dict=filter_dict)
+    if gameObj.status==GameStatus.started and game_data.joiner_player_id !=None:
+        raise HTTPException(status_code=409, detail="You can only join a game once after which it is either completed or expired nothing else can happen")
+    if gameObj.creator_player_id ==game_data.joiner_player_id:
+        raise HTTPException(status_code=409,detail="Creator of a game can't join the same game a different player should join")
+    if gameObj.status == GameStatus.expired:
+        raise HTTPException(status_code=401,detail="Game has expired no more updates can be done this way")
     result = await update_game(filter_dict, game_data)
 
     if not result:

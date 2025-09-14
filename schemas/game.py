@@ -8,35 +8,42 @@
 # ============================================================================
 
 from schemas.imports import *
-from pydantic import Field
+from typing import Annotated
+from pydantic import BaseModel, StringConstraints, field_validator
 import time
 
 class GameBase(BaseModel):
     # Add other fields here 
-    creator_secret_id:str
-    joiner_secret_id:Optional[str]=None
-    status:GameStatus
+    settings:GameSettings
     pass
 
 class GameCreate(GameBase):
-    # Add other fields here 
+    # Add other fields here
+    status:GameStatus 
     date_created: int = Field(default_factory=lambda: int(time.time()))
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 class GameUpdate(BaseModel):
     # Add other fields here
-    joiner_secret_id:Optional[str]=None
-    status:GameStatus 
+    creator_player_id:Optional[str]=None
+    joiner_player_id:Optional[str]=None
+    status:Optional[GameStatus ]=None
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
+
+
 class GameOut(GameBase):
-    # Add other fields here 
+    # Add other fields here
+    status:GameStatus
+     
     id: Optional[str] =None
+    joiner_player_id:Optional[str]=None
     date_created: Optional[int] = None
     last_updated: Optional[int] = None
-    
+    creator_player_id:Optional[str]=None
     @model_validator(mode='before')
     def set_dynamic_values(cls,values):
+      
         values['id']= str(values.get('_id'))
         return values
     class Config:

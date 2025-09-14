@@ -14,16 +14,20 @@ import time
 class MatchBase(BaseModel):
     player_id:str
     game_id:str
-    
+    guess:SecretStr
     pass
 
 class MatchCreate(MatchBase):
-    # Add other fields here 
+    # Add other fields here
+    dead:int
+    injured:int 
     date_created: int = Field(default_factory=lambda: int(time.time()))
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 class MatchUpdate(BaseModel):
     # Add other fields here 
+    dead:Optional[int]=None
+    injured:Optional[int]=None
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 class MatchOut(MatchBase):

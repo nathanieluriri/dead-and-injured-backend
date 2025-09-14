@@ -14,7 +14,7 @@ import time
 
 class PlayerBase(BaseModel):
     user_id:str
-    game_id:str
+    game_id:Optional[str]=None
     player_type:PlayerType
     pass
 
@@ -25,6 +25,7 @@ class PlayerCreate(PlayerBase):
 
 class PlayerUpdate(BaseModel):
     # Add other fields here 
+    game_id:str
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 class PlayerOut(PlayerBase):
