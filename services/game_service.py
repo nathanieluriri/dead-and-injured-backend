@@ -82,7 +82,12 @@ async def retrieve_available_games(start=0,stop=100) -> List[GameOut]:
     Returns:
         _type_: GameOut
     """
-    return await get_games(filter_dict={"status":GameStatus.waiting,"settings.game_type":GameType.multiplayer,"settings.is_public": True},start=start,stop=stop)
+    flter ={
+    'settings.game_type': 'Multiplayer', 
+    'settings.is_public': True, 
+    'status': 'waiting'
+        }
+    return await get_games(filter_dict=flter,start=start,stop=stop)
 
 async def update_game_by_id(game_id: str, game_data: GameUpdate) -> GameOut:
     """_summary_
