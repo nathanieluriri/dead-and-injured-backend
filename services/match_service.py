@@ -25,8 +25,12 @@ from repositories.game import (
 from repositories.secret import (
     get_secret
 )
-from schemas.match import MatchCreate, MatchUpdate, MatchOut,MatchBase,GuessResult,Player
+from repositories.scores import (
+    create_scores
+)
+from schemas.match import MatchCreate, MatchUpdate, MatchOut,MatchBase,GuessResult,Player,MatchResult
 from schemas.game import GameStatus,GameUpdate
+from schemas.scores import ScoresBase,ScoresCreate,ScoresUpdate,ScoresOut
 
 
 
@@ -36,7 +40,7 @@ async def add_match(match_data: MatchBase) -> MatchOut:
     """adds an entry of MatchCreate to the database and returns an object but it runs through some logic before adding anything 
     It checks which player's turn after checking for turn it check if the player is even allowed and after checking it now checks if the game has started then after that it calculates dead and injured using an algorithm and then it allows players to add the match to the database
     
-
+    # TODO:ADD A WAY TO NOTIFY THE PLAYER THAT DIDN'T WIN SO HE DOESN'T HAVE TO SEND ANOTHER REQUEST;
     Returns:
         _type_: MatchOut
     """
@@ -55,15 +59,23 @@ async def add_match(match_data: MatchBase) -> MatchOut:
                 opponents_secret =await get_secret(filter_dict={"player_id":current_game.joiner_player_id})
                 
                 
+                
                 player = Player(code= opponents_secret.secret)
                 guess_result =  player.guess_result(guess=match_data.guess)
                 if guess_result.dead==4:
                 # do something concerning win
-                
+                    
                     
                     completed_game = GameUpdate(status=GameStatus.completed)
-                    update_game(filter_dict={"_id":ObjectId(match_data.game_id)},game_data=completed_game)
-                    # TODO: Add the winning player's score to the score table 
+                    await update_game(filter_dict={"_id":ObjectId(match_data.game_id)},game_data=completed_game)
+                    winner_score_base =ScoresBase(player_id=match_data.player_id,match_result=MatchResult.win)
+                    loser_score_base =ScoresBase(player_id=current_game.joiner_player_id,match_result=MatchResult.win)
+                    winner_score_creation = ScoresCreate(**winner_score_base.model_dump())
+                    loser_score_creation = ScoresCreate(**loser_score_base.model_dump())
+                    await create_scores(scores_data=winner_score_creation)
+                    
+                    await create_scores(scores_data=loser_score_creation)  
+                    
                     pass
                 
                 new_match_create_data = MatchCreate(player_id=match_data.player_id,game_id=match_data.game_id,guess=match_data.guess,dead=guess_result.dead,injured=guess_result.injured)
@@ -83,9 +95,15 @@ async def add_match(match_data: MatchBase) -> MatchOut:
                 
                     
                     completed_game = GameUpdate(status=GameStatus.completed)
-                    update_game(filter_dict={"_id":ObjectId(match_data.game_id)},game_data=completed_game)
-                    # TODO: Add the winning player's score to the score table 
-                    pass
+                    await update_game(filter_dict={"_id":ObjectId(match_data.game_id)},game_data=completed_game)
+                    winner_score_base =ScoresBase(player_id=match_data.player_id,match_result=MatchResult.win)
+                    loser_score_base =ScoresBase(player_id=current_game.creator_player_id,match_result=MatchResult.win)
+                    winner_score_creation = ScoresCreate(**winner_score_base.model_dump())
+                    loser_score_creation = ScoresCreate(**loser_score_base.model_dump())
+                    await create_scores(scores_data=winner_score_creation)
+                    
+                    await create_scores(scores_data=loser_score_creation)  
+                     
                 
                 new_match_create_data = MatchCreate(player_id=match_data.player_id,game_id=match_data.game_id,guess=match_data.guess,dead=guess_result.dead,injured=guess_result.injured)
                 return await create_match(match_data=new_match_create_data)
@@ -110,9 +128,15 @@ async def add_match(match_data: MatchBase) -> MatchOut:
                 
                 
                 completed_game = GameUpdate(status=GameStatus.completed)
-                update_game(filter_dict={"_id":ObjectId(match_data.game_id)},game_data=completed_game)
-                # TODO: Add the winning player's score to the score table 
-                pass
+                await update_game(filter_dict={"_id":ObjectId(match_data.game_id)},game_data=completed_game)
+                winner_score_base =ScoresBase(player_id=match_data.player_id,match_result=MatchResult.win)
+                loser_score_base =ScoresBase(player_id=current_game.joiner_player_id,match_result=MatchResult.win)
+                winner_score_creation = ScoresCreate(**winner_score_base.model_dump())
+                loser_score_creation = ScoresCreate(**loser_score_base.model_dump())
+                await create_scores(scores_data=winner_score_creation)
+                
+                await create_scores(scores_data=loser_score_creation)   
+               
             
             new_match_create_data = MatchCreate(player_id=match_data.player_id,game_id=match_data.game_id,guess=match_data.guess,dead=guess_result.dead,injured=guess_result.injured)
             return await create_match(match_data=new_match_create_data)
