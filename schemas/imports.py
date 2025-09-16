@@ -52,3 +52,45 @@ class MatchResult(int,Enum):
     win=1
     loss=0
     
+    
+
+class GuessResult(BaseModel):
+    dead:int
+    injured:int
+    game_over:bool        
+        
+class Player:
+    def __init__(self, code: SecretStr):
+        """Initialize a player with a secret code (string of 4 digits)."""
+        self.code = [int(d) for d in code]
+        self.gameover = False
+
+    def guess_result(self, guess: SecretStr)->GuessResult:
+        """
+        Calculates the result of a guess and returns a guess result object
+        containing the number of dead (Bulls) and injured(Cows) code guesses
+
+        Args:
+            guess (SecretStr): _description_
+
+        Returns:
+            GuessResult: _description_
+        """
+        guess_digits = [int(d) for d in guess]
+
+        # dead (bulls): correct digit & position
+        dead = sum(g == c for g, c in zip(guess_digits, self.code))
+
+        # injured (cows): correct digit anywhere but not counted in the accurate position
+        injured = (
+            sum(min(guess_digits.count(d), self.code.count(d)) for d in set(guess_digits))
+            - dead
+        )
+
+        if dead == len(self.code):
+            self.gameover = True
+            
+        return GuessResult(dead=dead,injured=injured,game_over=self.gameover)
+        
+
+

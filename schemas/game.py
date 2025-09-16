@@ -19,7 +19,8 @@ class GameBase(BaseModel):
 
 class GameCreate(GameBase):
     # Add other fields here
-    status:GameStatus 
+    status:GameStatus
+    creator_player_id:str 
     date_created: int = Field(default_factory=lambda: int(time.time()))
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 

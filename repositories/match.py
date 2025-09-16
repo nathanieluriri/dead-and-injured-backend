@@ -68,3 +68,12 @@ async def update_match(filter_dict: dict, match_data: MatchUpdate) -> MatchOut:
 
 async def delete_match(filter_dict: dict):
     return await db.matchs.delete_one(filter_dict)
+
+
+async def get_latest_match(game_id)->MatchOut| None:
+    doc = await db.matchs.find_one(filter={"game_id":game_id} ,sort=[("date_created", -1)])
+    if doc:
+        matchOut =MatchOut(**doc)
+        return matchOut
+    else:
+        return None

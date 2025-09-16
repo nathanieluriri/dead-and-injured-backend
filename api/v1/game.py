@@ -69,7 +69,7 @@ async def get_my_games(id: str = Query(..., description="game ID to fetch specif
 @router.post("/{secret}",description="You can use this to create new games ",dependencies=[Depends(verify_token)], response_model=APIResponse[ GameOut])
 async def create_new_game(secret:SecretStr,game_data:GameBase,token:accessTokenOut = Depends(verify_token)):
     
-    new_game = GameCreate(status=GameStatus.waiting,settings=game_data.settings)
+    new_game = GameCreate(status=GameStatus.waiting,settings=game_data.settings,creator_player_id=token.userId)
 
     items = await add_game(game_data=new_game)
     
