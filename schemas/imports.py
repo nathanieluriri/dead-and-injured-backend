@@ -28,10 +28,15 @@ class GameStatus(str,Enum):
     completed="completed"
     expired="expired"
     
+class GameType(str,Enum):
+    single_player="SinglePlayer"
+    multiplayer="Multiplayer"
+
 class GameSettings(BaseModel):
     is_timed: bool
     how_many_minutes: int
     is_public: bool
+    game_type:GameType
 
     @model_validator(mode="after")
     def check_timing_rules(self):
@@ -43,9 +48,6 @@ class GameSettings(BaseModel):
         return self
     
     
-class GameType(str,Enum):
-    single_player="SinglePlayer"
-    multiplayer="Multiplayer"
 
 
 class MatchResult(int,Enum):

@@ -17,7 +17,7 @@ from repositories.game import (
     update_game,
     delete_game,
 )
-from schemas.game import GameCreate, GameUpdate, GameOut,GameStatus,GameSettings
+from schemas.game import GameCreate, GameUpdate, GameOut,GameStatus,GameSettings,GameType
 
 
 async def add_game(game_data: GameCreate) -> GameOut:
@@ -82,7 +82,7 @@ async def retrieve_available_games(start=0,stop=100) -> List[GameOut]:
     Returns:
         _type_: GameOut
     """
-    return await get_games(filter_dict={"status":GameStatus.waiting,"settings.is_public": True},start=start,stop=stop)
+    return await get_games(filter_dict={"status":GameStatus.waiting,"settings.game_type":GameType.multiplayer,"settings.is_public": True},start=start,stop=stop)
 
 async def update_game_by_id(game_id: str, game_data: GameUpdate) -> GameOut:
     """_summary_
