@@ -103,3 +103,7 @@ async def create_new_game(secret:SecretStr,gameId:str,token:accessTokenOut = Dep
     await add_secret(secret_data=new_secret)
     items = await retrieve_game_by_game_id(id=gameId)
     return APIResponse(status_code=200, data=items, detail="Fetched successfully")
+
+
+
+# TODO: Create an SSE Event to notify players in multiplayer mode of game state changes 

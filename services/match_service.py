@@ -40,7 +40,7 @@ async def add_match(match_data: MatchBase) -> MatchOut:
     """adds an entry of MatchCreate to the database and returns an object but it runs through some logic before adding anything 
     It checks which player's turn after checking for turn it check if the player is even allowed and after checking it now checks if the game has started then after that it calculates dead and injured using an algorithm and then it allows players to add the match to the database
     
-    # TODO:ADD A WAY TO NOTIFY THE PLAYER THAT DIDN'T WIN SO HE DOESN'T HAVE TO SEND ANOTHER REQUEST;
+
     Returns:
         _type_: MatchOut
     """
