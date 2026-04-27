@@ -6,6 +6,7 @@
 # 
 # ============================================================================
 
+import time
 from bson import ObjectId
 from fastapi import HTTPException
 from typing import List
@@ -13,11 +14,14 @@ from typing import List
 from repositories.game import (
     create_game,
     get_game,
+    get_expirable_games,
     get_games,
+    mark_games_expired,
     update_game,
     delete_game,
 )
 from schemas.game import GameCreate, GameUpdate, GameOut,GameStatus,GameSettings,GameType
+from services.presence_service import reset_for_game_participants
 
 
 async def add_game(game_data: GameCreate) -> GameOut:
@@ -65,7 +69,7 @@ async def retrieve_game_by_game_id(id: str) -> GameOut:
     if not result:
         raise HTTPException(status_code=404, detail="Game not found")
 
-    return result
+    return await expire_game_if_needed(result)
 
 
 async def retrieve_games(start=0,stop=100) -> List[GameOut]:
@@ -88,6 +92,37 @@ async def retrieve_available_games(start=0,stop=100) -> List[GameOut]:
     'status': 'waiting'
         }
     return await get_games(filter_dict=flter,start=start,stop=stop)
+
+
+async def expire_stale_games_job() -> int:
+    now = int(time.time())
+    expirable_games = await get_expirable_games(before_timestamp=now - (10 * 60))
+    game_ids = [game.id for game in expirable_games if game.id]
+    for game in expirable_games:
+        participants = [pid for pid in (game.creator_player_id, game.joiner_player_id) if pid]
+        await reset_for_game_participants(participants)
+    return await mark_games_expired(game_ids)
+
+
+async def expire_game_if_needed(game: GameOut) -> GameOut:
+    if game.status in {GameStatus.completed, GameStatus.expired}:
+        return game
+    if not game.settings.is_timed:
+        return game
+
+    created_at = game.date_created or 0
+    expires_at = created_at + (game.settings.how_many_minutes * 60)
+    if expires_at > int(time.time()):
+        return game
+
+    await update_game(
+        filter_dict={"_id": ObjectId(game.id)},
+        game_data=GameUpdate(status=GameStatus.expired),
+    )
+    participants = [pid for pid in (game.creator_player_id, game.joiner_player_id) if pid]
+    await reset_for_game_participants(participants)
+    refreshed_game = await get_game({"_id": ObjectId(game.id)})
+    return refreshed_game or game
 
 async def update_game_by_id(game_id: str, game_data: GameUpdate) -> GameOut:
     """_summary_

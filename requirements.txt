@@ -1,6 +1,7 @@
 fastapi[all]
 requests
 pyjwt
+slowapi
 dotenv==0.9.9
 uvicorn
 python-dotenv

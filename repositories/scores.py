@@ -68,3 +68,13 @@ async def update_scores(filter_dict: dict, scores_data: ScoresUpdate) -> ScoresO
 
 async def delete_scores(filter_dict: dict):
     return await db.scoress.delete_one(filter_dict)
+
+
+async def get_scores_for_players(player_ids: list[str]) -> List[ScoresOut]:
+    if not player_ids:
+        return []
+    cursor = db.scoress.find({"player_id": {"$in": player_ids}})
+    items: list[ScoresOut] = []
+    async for doc in cursor:
+        items.append(ScoresOut(**doc))
+    return items

@@ -1,7 +1,6 @@
 from core.database import db
 
 from schemas.tokens_schema import accessTokenCreate,refreshTokenCreate,accessTokenOut,refreshTokenOut
-import asyncio
 from datetime import datetime, timezone, timedelta
 from dateutil import parser
 from bson import ObjectId,errors
@@ -93,11 +92,10 @@ async def get_access_tokens(accessToken:str)->accessTokenOut:
                 return None
             
         else:
-            delete_access_token(accessToken=str(token['_id'])) 
+            await delete_access_token(accessToken=str(token['_id'])) 
             return None
     else:
-        print("No token found")
-        return "None"
+        return None
     
     
     
@@ -121,7 +119,6 @@ async def get_access_tokens_no_date_check(accessToken:str)->accessTokenOut:
         
     
     else:
-        print("No token found")
         return None
 
     
@@ -131,7 +128,19 @@ async def get_refresh_tokens(refreshToken:str)->refreshTokenOut:
         tokn = refreshTokenOut(**token)
         return tokn
 
-    else: return None
+    else:
+        return None
+
+
+async def get_refresh_token_owner(refreshToken: str) -> refreshTokenOut | None:
+    try:
+        obj_id = ObjectId(refreshToken)
+    except errors.InvalidId:
+        return None
+    token = await db.refreshToken.find_one({"_id": obj_id})
+    if token is None:
+        return None
+    return refreshTokenOut(**token)
     
     
     

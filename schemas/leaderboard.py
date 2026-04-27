@@ -16,7 +16,7 @@ class LeaderboardBase(BaseModel):
     # Add other fields here 
     user_id:str
     email:EmailStr
-    score:int
+    wins:int
     rank:int
     pass
 

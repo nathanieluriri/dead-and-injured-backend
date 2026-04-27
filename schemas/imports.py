@@ -7,16 +7,7 @@ from typing import Optional,List,Any,Annotated
 from enum import Enum
 import time
 
-def validate_secret(v: str) -> str:
-    if not v.isdigit():
-        raise ValueError("Secret must contain only digits")
-    if len(v) != 4:
-        raise ValueError("Secret must be exactly 4 digits")
-    if len(set(v)) != 4:
-        raise ValueError("Secret digits must be unique")
-    return v
-
-SecretStr = Annotated[str, AfterValidator(validate_secret)]
+from schemas.validators import CodeStr as SecretStr, validate_code as validate_secret
 class PlayerType(str,Enum):
     creator="Creator"
     joiner="Joiner"

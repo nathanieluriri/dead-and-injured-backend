@@ -12,6 +12,7 @@ from pymongo import ReturnDocument
 from core.database import db
 from fastapi import HTTPException,status
 from typing import List,Optional
+from bson import ObjectId
 from schemas.game import GameUpdate, GameCreate, GameOut
 
 async def create_game(game_data: GameCreate) -> GameOut:
@@ -69,3 +70,27 @@ async def update_game(filter_dict: dict, game_data: GameUpdate) -> GameOut:
 
 async def delete_game(filter_dict: dict):
     return await db.games.delete_one(filter_dict)
+
+
+async def get_expirable_games(before_timestamp: int) -> List[GameOut]:
+    cursor = db.games.find(
+        {
+            "status": {"$in": ["waiting", "started"]},
+            "date_created": {"$lt": before_timestamp},
+        }
+    )
+    items: list[GameOut] = []
+    async for doc in cursor:
+        items.append(GameOut(**doc))
+    return items
+
+
+async def mark_games_expired(game_ids: list[str]) -> int:
+    if not game_ids:
+        return 0
+    object_ids = [ObjectId(game_id) for game_id in game_ids if ObjectId.is_valid(game_id)]
+    result = await db.games.update_many(
+        {"_id": {"$in": object_ids}},
+        {"$set": {"status": "expired"}},
+    )
+    return int(result.modified_count)

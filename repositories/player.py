@@ -68,3 +68,10 @@ async def update_player(filter_dict: dict, player_data: PlayerUpdate) -> PlayerO
 
 async def delete_player(filter_dict: dict):
     return await db.players.delete_one(filter_dict)
+
+
+async def get_player_by_user_and_game(user_id: str, game_id: str) -> Optional[PlayerOut]:
+    doc = await db.players.find_one({"user_id": user_id, "game_id": game_id})
+    if doc is None:
+        return None
+    return PlayerOut(**doc)

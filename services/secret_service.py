@@ -97,3 +97,7 @@ async def update_secret_by_id(secret_id: str, secret_data: SecretUpdate) -> Secr
         raise HTTPException(status_code=404, detail="Secret not found or update failed")
 
     return result
+
+
+async def retrieve_secret_for_player(player_id: str) -> SecretOut | None:
+    return await get_secret({"player_id": player_id})

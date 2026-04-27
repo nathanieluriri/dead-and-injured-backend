@@ -1,109 +1,104 @@
+from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status, Path,Depends
+import asyncio
+import json
 from typing import List
-from bson import ObjectId
-from schemas.response_schema import APIResponse
+
+from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from core.matchmaking_events import subscribe as subscribe_matchmaking_events
+from schemas.app_features import LocalGameCreateRequest, MatchSessionResponse, MatchmakingQueueResponse
+from schemas.game import GameOut
+from schemas.response_schema import APIResponse, ok_response
 from schemas.tokens_schema import accessTokenOut
-from schemas.game import (
-    GameCreate,
-    GameOut,
-    GameBase,
-    GameUpdate,
-    GameStatus,
+from schemas.validators import CodeStr
+from security.auth import maybe_verify_token, verify_token
+from services.game_service import retrieve_available_games
+from services.live_game_service import (
+    create_local_game,
+    create_single_player_game,
+    get_active_friend_game,
+    get_matchmaking_status,
+    join_matchmaking_queue,
+    leave_matchmaking_queue,
+    submit_join_secret,
 )
-from schemas.player import (
-    PlayerCreate,
-    PlayerBase,
-    PlayerOut,
-    PlayerType,
-    PlayerUpdate
-)
-from schemas.secret import (
- SecretBase,
- SecretCreate,   
-)
-from services.game_service import (
-    add_game,
-    remove_game,
-    retrieve_available_games,
-    retrieve_game_by_game_id,
-    update_game_by_id,
-)
-from services.player_service import (
-    add_player,
-   
-)
-from services.secret_service import (
-    add_secret,
-   
-)
-from security.auth import verify_token
-from pydantic import AfterValidator
-from typing import Annotated
 
-def validate_secret(v: str) -> str:
-    if not v.isdigit():
-        raise ValueError("Secret must contain only digits")
-    if len(v) != 4:
-        raise ValueError("Secret must be exactly 4 digits")
-    if len(set(v)) != 4:
-        raise ValueError("Secret digits must be unique")
-    return v
 
-SecretStr = Annotated[str, AfterValidator(validate_secret)]
 router = APIRouter(prefix="/games", tags=["Games"])
 
 
-
-@router.get("/{start}/{stop}",dependencies=[Depends(verify_token)],description="You can only view games that are set to public anyone can join those games and are in the waiting status", response_model=APIResponse[List[GameOut]])
-async def list_games(start:int= 0, stop:int=100):
-    items = await retrieve_available_games(start,stop)
-    return APIResponse(status_code=200, data=items, detail="Fetched successfully")
-
-@router.get("/me",description="You can use this to view histories of games as long as they are viewable to you", response_model=APIResponse[GameOut])
-async def get_my_games(id: str = Query(..., description="game ID to fetch specific item")):
-    items = await retrieve_game_by_game_id(id=id)
-    return APIResponse(status_code=200, data=items, detail="games items fetched")
+class JoinSecretPayload(BaseModel):
+    secret: CodeStr
 
 
-@router.post("/{secret}",description="You can use this to create new games ",dependencies=[Depends(verify_token)], response_model=APIResponse[ GameOut])
-async def create_new_game(secret:SecretStr,game_data:GameBase,token:accessTokenOut = Depends(verify_token)):
-    
-    new_game = GameCreate(status=GameStatus.waiting,settings=game_data.settings,creator_player_id=token.userId)
-
-    items = await add_game(game_data=new_game)
-    
-    player_data = PlayerBase(user_id=token.userId,game_id=items.id,player_type=PlayerType.creator)
-    new_player_data = PlayerCreate(**player_data.model_dump())
-    creator_player =await add_player(player_data=new_player_data)
-    secret_base = SecretBase(secret=secret,player_id=creator_player.id)
-    new_secret= SecretCreate(**secret_base.model_dump())
-    await add_secret(secret_data=new_secret)
-    game_update_data = GameUpdate(creator_player_id=creator_player.id)
-    await update_game_by_id(game_id=items.id,game_data=game_update_data)
-    items = await retrieve_game_by_game_id(id=items.id)
-    
-    return APIResponse(status_code=200, data=items, detail="Fetched successfully")
+@router.get("/{start}/{stop}", response_model=APIResponse[List[GameOut]])
+async def list_games(start: int = 0, stop: int = 100) -> APIResponse[List[GameOut]]:
+    items = await retrieve_available_games(start, stop)
+    return ok_response(data=items, message="Games fetched successfully")
 
 
-
-@router.post("/join/{gameId}/{secret}",description="You can use this to Join new games ",dependencies=[Depends(verify_token)], response_model=APIResponse[GameOut])
-async def create_new_game(secret:SecretStr,gameId:str,token:accessTokenOut = Depends(verify_token)):
-  
- 
-    player_data = PlayerBase(user_id=token.userId,game_id=gameId,player_type=PlayerType.joiner)
-    
-    new_player_data = PlayerCreate(**player_data.model_dump())
-    
-    joiner_player =await add_player(player_data=new_player_data)
-    game_update_data = GameUpdate(joiner_player_id=joiner_player.id,status=GameStatus.started)
-    await update_game_by_id(game_id=gameId,game_data=game_update_data)
-    secret =SecretBase(secret=secret,player_id=joiner_player.id)
-    new_secret = SecretCreate(**secret.model_dump())
-    await add_secret(secret_data=new_secret)
-    items = await retrieve_game_by_game_id(id=gameId)
-    return APIResponse(status_code=200, data=items, detail="Fetched successfully")
+@router.post("/single", response_model=APIResponse[MatchSessionResponse])
+async def create_single_player_match(token: accessTokenOut | None = Depends(maybe_verify_token)) -> APIResponse[MatchSessionResponse]:
+    session = await create_single_player_game(token.userId if token else None)
+    return ok_response(data=session, message="Single-player match created successfully")
 
 
+@router.post("/local", response_model=APIResponse[MatchSessionResponse])
+async def create_local_match(payload: LocalGameCreateRequest) -> APIResponse[MatchSessionResponse]:
+    session = await create_local_game(payload)
+    return ok_response(data=session, message="Local match created successfully")
 
-# TODO: Create an SSE Event to notify players in multiplayer mode of game state changes 
+
+@router.post("/join/{game_id}", response_model=APIResponse[MatchSessionResponse], dependencies=[Depends(verify_token)])
+async def join_game_with_secret(
+    game_id: str,
+    payload: JoinSecretPayload,
+    token: accessTokenOut = Depends(verify_token),
+) -> APIResponse[MatchSessionResponse]:
+    session = await submit_join_secret(game_id, token.userId, payload.secret)
+    return ok_response(data=session, message="Secret submitted successfully")
+
+
+@router.get("/me/friend", response_model=APIResponse[MatchSessionResponse | None], dependencies=[Depends(verify_token)])
+async def get_my_friend_game(token: accessTokenOut = Depends(verify_token)) -> APIResponse[MatchSessionResponse | None]:
+    return ok_response(data=await get_active_friend_game(token.userId), message="Friend game fetched successfully")
+
+
+@router.post("/matchmaking/queue", response_model=APIResponse[MatchmakingQueueResponse], dependencies=[Depends(verify_token)])
+async def enqueue_matchmaking(token: accessTokenOut = Depends(verify_token)) -> APIResponse[MatchmakingQueueResponse]:
+    return ok_response(data=await join_matchmaking_queue(token.userId), message="Queue status updated successfully")
+
+
+@router.delete("/matchmaking/queue", response_model=APIResponse[dict[str, str]], dependencies=[Depends(verify_token)])
+async def dequeue_matchmaking(token: accessTokenOut = Depends(verify_token)) -> APIResponse[dict[str, str]]:
+    return ok_response(data=await leave_matchmaking_queue(token.userId), message="Queue status updated successfully")
+
+
+@router.get("/matchmaking/status", response_model=APIResponse[MatchmakingQueueResponse], dependencies=[Depends(verify_token)])
+async def queue_status(token: accessTokenOut = Depends(verify_token)) -> APIResponse[MatchmakingQueueResponse]:
+    return ok_response(data=await get_matchmaking_status(token.userId), message="Queue status fetched successfully")
+
+
+@router.get("/matchmaking/stream", dependencies=[Depends(verify_token)])
+async def stream_matchmaking(token: accessTokenOut = Depends(verify_token)) -> StreamingResponse:
+    user_id = token.userId
+
+    async def event_generator():
+        async with subscribe_matchmaking_events(user_id) as queue:
+            current = await get_matchmaking_status(user_id)
+            yield f"data: {json.dumps({'type': 'snapshot', 'status': current.model_dump()})}\n\n"
+            if current.status == "matched":
+                return
+            for _ in range(120):
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield f"data: {json.dumps(event)}\n\n"
+                    if event.get("type") == "match_found":
+                        return
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

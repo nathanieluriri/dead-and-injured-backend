@@ -22,6 +22,8 @@ class GameCreate(GameBase):
     
     status:GameStatus
     creator_player_id:str 
+    joiner_player_id: Optional[str] = None
+    last_player_id: Optional[str] = None
     date_created: int = Field(default_factory=lambda: int(time.time()))
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
@@ -29,6 +31,7 @@ class GameUpdate(BaseModel):
     # Add other fields here
     creator_player_id:Optional[str]=None
     joiner_player_id:Optional[str]=None
+    last_player_id: Optional[str] = None
     status:Optional[GameStatus ]=None
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
@@ -40,6 +43,7 @@ class GameOut(GameBase):
      
     id: Optional[str] =None
     joiner_player_id:Optional[str]=None
+    last_player_id: Optional[str] = None
     date_created: Optional[int] = None
     last_updated: Optional[int] = None
     creator_player_id:Optional[str]=None

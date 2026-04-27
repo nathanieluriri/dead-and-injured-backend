@@ -10,26 +10,26 @@
 
 from pymongo import ReturnDocument
 from core.database import db
-from fastapi import HTTPException,status
-from typing import List,Optional
-from schemas.user import UserUpdate, UserCreate, UserOut
+from fastapi import HTTPException, status
+from typing import List, Optional
+from schemas.user import UserUpdate, UserCreate, UserOut, UserRecord
 
 async def create_user(user_data: UserCreate) -> UserOut:
-    user_dict = user_data.model_dump()
+    user_dict = user_data.model_dump(mode="json")
     result =await db.users.insert_one(user_dict)
     result = await db.users.find_one(filter={"_id":result.inserted_id})
   
     returnable_result = UserOut(**result)
     return returnable_result
 
-async def get_user(filter_dict: dict) -> Optional[UserOut]:
+async def get_user(filter_dict: dict) -> Optional[UserRecord]:
     try:
         result = await db.users.find_one(filter_dict)
 
         if result is None:
             return None
 
-        return UserOut(**result)
+        return UserRecord(**result)
 
     except Exception as e:
         raise HTTPException(
@@ -49,9 +49,7 @@ async def get_users(filter_dict: dict = {},start=0,stop=100) -> List[UserOut]:
         user_list = []
 
         async for doc in cursor:
-            userObj =UserOut(**doc)
-            userObj.password=None
-            user_list.append(userObj)
+            user_list.append(UserOut(**doc))
         
         return user_list
 
@@ -63,7 +61,7 @@ async def get_users(filter_dict: dict = {},start=0,stop=100) -> List[UserOut]:
 async def update_user(filter_dict: dict, user_data: UserUpdate) -> UserOut:
     result = await db.users.find_one_and_update(
         filter_dict,
-        {"$set": user_data.model_dump()},
+        {"$set": user_data.model_dump(exclude_none=True)},
         return_document=ReturnDocument.AFTER
     )
     returnable_result = UserOut(**result)

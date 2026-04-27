@@ -13,6 +13,7 @@ from typing import List
 from repositories.player import (
     create_player,
     get_player,
+    get_player_by_user_and_game,
     get_players,
     update_player,
     delete_player,
@@ -97,3 +98,7 @@ async def update_player_by_id(player_id: str, player_data: PlayerUpdate) -> Play
         raise HTTPException(status_code=404, detail="Player not found or update failed")
 
     return result
+
+
+async def retrieve_player_for_user_in_game(user_id: str, game_id: str) -> PlayerOut | None:
+    return await get_player_by_user_and_game(user_id=user_id, game_id=game_id)

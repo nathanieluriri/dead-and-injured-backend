@@ -1,29 +1,27 @@
+from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, status, Path
 from typing import List
-from schemas.response_schema import APIResponse
-from schemas.secret import (
-    SecretCreate,
-    SecretOut,
-    SecretBase,
-    SecretUpdate,
-)
-from services.secret_service import (
-    add_secret,
-    remove_secret,
-    retrieve_secrets,
-    retrieve_secret_by_secret_id,
-    update_secret,
-)
 
-router = APIRouter(prefix="/secrets", tags=["Secrets"])
+from fastapi import APIRouter, Depends, HTTPException
 
-@router.get("/", response_model=APIResponse[List[SecretOut]])
-async def list_secrets():
-    items = await retrieve_secrets()
-    return APIResponse(status_code=200, data=items, detail="Fetched successfully")
+from schemas.response_schema import APIResponse, ok_response
+from schemas.secret import SecretOut
+from schemas.tokens_schema import accessTokenOut
+from security.auth import verify_token
+from services.player_service import retrieve_players
+from services.secret_service import retrieve_secret_for_player
 
-@router.get("/me", response_model=APIResponse[SecretOut])
-async def get_my_secrets(id: str = Query(..., description="secret ID to fetch specific item")):
-    items = await retrieve_secret_by_secret_id(id=id)
-    return APIResponse(status_code=200, data=items, detail="secrets items fetched")
+router = APIRouter(prefix="/secrets", tags=["Secrets"], dependencies=[Depends(verify_token)])
+
+
+@router.get("/me", response_model=APIResponse[List[SecretOut]])
+async def get_my_secrets(token: accessTokenOut = Depends(verify_token)) -> APIResponse[List[SecretOut]]:
+    players = [player for player in await retrieve_players() if player.user_id == token.userId]
+    secrets: list[SecretOut] = []
+    for player in players:
+        secret = await retrieve_secret_for_player(player.id)
+        if secret is not None:
+            secrets.append(secret)
+    if not secrets:
+        raise HTTPException(status_code=404, detail="No secrets found for user")
+    return ok_response(data=secrets, message="Secrets fetched successfully")
