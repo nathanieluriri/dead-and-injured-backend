@@ -10,7 +10,6 @@
 
 from pymongo import ReturnDocument
 from core.database import db
-from fastapi import HTTPException, status
 from typing import List, Optional
 from schemas.user import UserUpdate, UserCreate, UserOut, UserRecord
 
@@ -23,41 +22,25 @@ async def create_user(user_data: UserCreate) -> UserOut:
     return returnable_result
 
 async def get_user(filter_dict: dict) -> Optional[UserRecord]:
-    try:
-        result = await db.users.find_one(filter_dict)
-
-        if result is None:
-            return None
-
-        return UserRecord(**result)
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while fetching user: {str(e)}"
-        )
+    result = await db.users.find_one(filter_dict)
+    if result is None:
+        return None
+    return UserRecord(**result)
     
-async def get_users(filter_dict: dict = {},start=0,stop=100) -> List[UserOut]:
-    try:
-        if filter_dict is None:
-            filter_dict = {}
+async def get_users(filter_dict: dict | None = None, start: int = 0, stop: int = 100) -> List[UserOut]:
+    if filter_dict is None:
+        filter_dict = {}
 
-        cursor = (db.users.find(filter_dict)
-        .skip(start)
-        .limit(stop - start)
-        )
-        user_list = []
+    cursor = (db.users.find(filter_dict)
+    .skip(start)
+    .limit(max(stop - start, 0))
+    )
+    user_list = []
 
-        async for doc in cursor:
-            user_list.append(UserOut(**doc))
-        
-        return user_list
+    async for doc in cursor:
+        user_list.append(UserOut(**doc))
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while fetching users: {str(e)}"
-        )
+    return user_list
 async def update_user(filter_dict: dict, user_data: UserUpdate) -> UserOut:
     result = await db.users.find_one_and_update(
         filter_dict,

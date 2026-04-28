@@ -34,19 +34,32 @@ def send_email_task(kind: str, payload: dict[str, str]) -> None:
     dispatch_email(kind=kind, payload=payload)
 
 
-@celery_app.task(name="core.background_task.expire_stale_games")
-def expire_stale_games() -> int:
+def _run_async(coro):
+    """Run an async coroutine from a synchronous Celery worker safely.
+
+    asyncio.run() cannot be called from within a running event loop. Each
+    invocation here creates a fresh loop, runs the coroutine to completion,
+    and tears the loop down again so coroutines can rely on standard asyncio
+    primitives without leaking state between tasks.
+    """
     import asyncio
 
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@celery_app.task(name="core.background_task.expire_stale_games")
+def expire_stale_games() -> int:
     from services.game_service import expire_stale_games_job
 
-    return asyncio.run(expire_stale_games_job())
+    return _run_async(expire_stale_games_job())
 
 
 @celery_app.task(name="core.background_task.rebuild_leaderboard_task")
 def rebuild_leaderboard_task(user_ids: list[str] | None = None) -> int:
-    import asyncio
-
     from services.leaderboard_service import rebuild_leaderboard
 
-    return asyncio.run(rebuild_leaderboard(user_ids=user_ids))
+    return _run_async(rebuild_leaderboard(user_ids=user_ids))

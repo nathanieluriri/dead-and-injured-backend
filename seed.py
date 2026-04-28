@@ -78,22 +78,30 @@ class AIPlayer:
             "gameover": False,
             "current_list": possible
         }
-player = AIPlayer(code="0129")
+def _demo_run() -> None:
+    player = AIPlayer(code="0129")
 
-result = player.ai_play(
-    save_func=lambda: print("saving..."),
-    win_func=lambda: print("wining...")
-)
+    result = player.ai_play(
+        save_func=lambda: print("saving..."),
+        win_func=lambda: print("wining..."),
+    )
 
-print("First turn result:")
-print(result)
-result = player.ai_play(
-    save_func=lambda: print("saving again..."),
-    win_func=lambda: print("wining again..."),
-    previous_result=result
-)
+    print("First turn result:")
+    print(result)
+    result = player.ai_play(
+        save_func=lambda: print("saving again..."),
+        win_func=lambda: print("wining again..."),
+        previous_result=result,
+    )
 
-print("Second turn result:")
-print(result)
+    print("Second turn result:")
+    print(result)
 
- 
+
+if __name__ == "__main__":
+    import os
+
+    if os.getenv("RUN_SEED", "false").lower() != "true":
+        print("seed.py is disabled. Set RUN_SEED=true to execute the demo.")
+    else:
+        _demo_run()

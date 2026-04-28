@@ -247,6 +247,7 @@ async def build_profile_page(user_id: str) -> ProfilePageResponse:
         joinedLabel=f"Joined {datetime.fromtimestamp(user.date_created, tz=timezone.utc):%b %Y}" if user.date_created else "Joined recently",
         bio=user.bio,
         avatar_url=user.avatar_url,
+        isEmailVerified=bool(user.is_email_verified),
     )
     stats = [
         StatItem(label="Rating", value=str(wins)),

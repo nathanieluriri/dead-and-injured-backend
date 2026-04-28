@@ -1,4 +1,7 @@
+import logging
 from string import Template
+
+logger = logging.getLogger(__name__)
 # --- Invitation Email Template ---
 invitation_template_string = Template("""
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
@@ -67,5 +70,5 @@ def generate_invitation_email_from_template(
             register_link=register_link
         )
     except KeyError as e:
-        print(f"Error: Missing template variable: {e}")
+        logger.error("Missing invitation template variable: %s", e)
         return None

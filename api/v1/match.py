@@ -10,7 +10,7 @@ from schemas.app_features import MatchGuessRequest, MatchGuessResponse, MatchSes
 from schemas.match import MatchBase, MatchOut
 from schemas.response_schema import APIResponse, ok_response
 from schemas.tokens_schema import accessTokenOut
-from security.auth import maybe_verify_token, verify_token
+from security.auth import maybe_verify_token, verify_token, verify_token_email_verified
 from services.live_game_service import build_match_session, build_stream_payload, submit_guess, use_powerup
 from services.match_service import add_match, retrieve_match_by_match_id, retrieve_matchs
 from services.player_service import retrieve_player_for_user_in_game
@@ -90,9 +90,9 @@ async def stream_match(game_id: str) -> StreamingResponse:
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-@router.post("/multiplayer-round", response_model=APIResponse[MatchOut], dependencies=[Depends(verify_token)])
-@legacy_router.post("/multiplayer-round", response_model=APIResponse[MatchOut], dependencies=[Depends(verify_token)])
-async def play_match(match_data: MatchBase, token: accessTokenOut = Depends(verify_token)) -> APIResponse[MatchOut]:
+@router.post("/multiplayer-round", response_model=APIResponse[MatchOut], dependencies=[Depends(verify_token_email_verified)])
+@legacy_router.post("/multiplayer-round", response_model=APIResponse[MatchOut], dependencies=[Depends(verify_token_email_verified)])
+async def play_match(match_data: MatchBase, token: accessTokenOut = Depends(verify_token_email_verified)) -> APIResponse[MatchOut]:
     player = await retrieve_player_for_user_in_game(user_id=token.userId, game_id=match_data.game_id)
     if player is None or player.id != match_data.player_id:
         raise HTTPException(status_code=403, detail="Match player_id does not belong to the authenticated user")

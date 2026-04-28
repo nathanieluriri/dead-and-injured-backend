@@ -14,7 +14,7 @@ from schemas.game import GameOut
 from schemas.response_schema import APIResponse, ok_response
 from schemas.tokens_schema import accessTokenOut
 from schemas.validators import CodeStr
-from security.auth import maybe_verify_token, verify_token
+from security.auth import maybe_verify_token, verify_token, verify_token_email_verified
 from services.game_service import retrieve_available_games
 from services.live_game_service import (
     create_local_game,
@@ -67,8 +67,14 @@ async def get_my_friend_game(token: accessTokenOut = Depends(verify_token)) -> A
     return ok_response(data=await get_active_friend_game(token.userId), message="Friend game fetched successfully")
 
 
-@router.post("/matchmaking/queue", response_model=APIResponse[MatchmakingQueueResponse], dependencies=[Depends(verify_token)])
-async def enqueue_matchmaking(token: accessTokenOut = Depends(verify_token)) -> APIResponse[MatchmakingQueueResponse]:
+@router.post(
+    "/matchmaking/queue",
+    response_model=APIResponse[MatchmakingQueueResponse],
+    dependencies=[Depends(verify_token_email_verified)],
+)
+async def enqueue_matchmaking(
+    token: accessTokenOut = Depends(verify_token_email_verified),
+) -> APIResponse[MatchmakingQueueResponse]:
     return ok_response(data=await join_matchmaking_queue(token.userId), message="Queue status updated successfully")
 
 

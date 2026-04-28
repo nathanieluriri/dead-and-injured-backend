@@ -1,8 +1,22 @@
-from schemas.tokens_schema import refreshTokenOut,accessTokenOut,refreshTokenCreate,accessTokenCreate
-from security.encrypting_jwt import create_jwt_admin_token,create_jwt_member_token,decode_jwt_token,decode_jwt_token_without_expiration
-from bson import errors,ObjectId
-from fastapi import HTTPException,status
-from security.encrypting_jwt import decode_jwt_token
+import logging
+
+from bson import ObjectId, errors
+from fastapi import HTTPException, status
+
+from schemas.tokens_schema import (
+    accessTokenCreate,
+    accessTokenOut,
+    refreshTokenCreate,
+    refreshTokenOut,
+)
+from security.encrypting_jwt import (
+    create_jwt_admin_token,
+    create_jwt_member_token,
+    decode_jwt_token,
+    decode_jwt_token_without_expiration,
+)
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -101,63 +115,55 @@ async def validate_admin_accesstoken_otp(accessToken:str):
     from repositories.tokens_repo import get_inactive_access_token
 
     decodedAccessToken = await decode_jwt_token(token=accessToken)
-    print(decodedAccessToken)
+    logger.debug("validate_admin_accesstoken_otp: decoded=%s", decodedAccessToken)
     try:
         obj_id = ObjectId(decodedAccessToken['accessToken'])
     except errors.InvalidId:
-        
-        return None  # or raise an error / log it    
+        return None
 
-    print("o1")
     if decodedAccessToken:
-       
         if decodedAccessToken['role']=="admin":
-           
             validatedAccessToken= await get_inactive_access_token(token_id=decodedAccessToken['accessToken'])
-            print(validatedAccessToken)
+            logger.debug("validate_admin_accesstoken_otp: validated=%s", validatedAccessToken)
             if type(validatedAccessToken) == type(accessTokenOut(userId="12",accesstoken="sa")):
                 return validatedAccessToken
             elif validatedAccessToken=="None":
                 return None
             else:
-                return "active" 
+                return "active"
         else:
-            return None  
-        
+            return None
+
     else:
-        print("o4")
-        return None 
-    
+        logger.debug("validate_admin_accesstoken_otp: no decoded token")
+        return None
+
 async def validate_admin_accesstoken(accessToken:str):
     from repositories.tokens_repo import get_access_token
 
     decodedAccessToken = await decode_jwt_token(token=accessToken)
-    print(decodedAccessToken)
+    logger.debug("validate_admin_accesstoken: decoded=%s", decodedAccessToken)
     try:
         obj_id = ObjectId(decodedAccessToken['accessToken'])
     except errors.InvalidId:
-        
-        return None  # or raise an error / log it    
+        return None
 
-    print("o1")
     if decodedAccessToken:
-       
         if decodedAccessToken['role']=="admin":
-           
             validatedAccessToken= await get_access_token(token_id=decodedAccessToken['accessToken'])
-            print(validatedAccessToken)
+            logger.debug("validate_admin_accesstoken: validated=%s", validatedAccessToken)
             if type(validatedAccessToken) == type(accessTokenOut(userId="12",accesstoken="sa")):
                 return validatedAccessToken
             elif validatedAccessToken=="None":
                 return None
             else:
-                return "inactive" 
+                return "inactive"
         else:
-            return None  
-        
+            return None
+
     else:
-        print("o4")
-        return None 
+        logger.debug("validate_admin_accesstoken: no decoded token")
+        return None
     
     
 async def validate_expired_admin_accesstoken(accessToken:str):

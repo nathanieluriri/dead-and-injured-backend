@@ -11,11 +11,20 @@ from security.hash import hash_password
 
 class UserLogin(BaseModel):
     email: EmailStr
-    password: str | bytes
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class UserSignup(UserLogin):
     username: str = Field(..., min_length=3, max_length=32)
+
+    @model_validator(mode="after")
+    def password_complexity(self) -> "UserSignup":
+        pwd = self.password
+        has_letter = any(c.isalpha() for c in pwd)
+        has_digit = any(c.isdigit() for c in pwd)
+        if not (has_letter and has_digit):
+            raise ValueError("Password must include at least one letter and one digit")
+        return self
 
 
 class UserRefresh(BaseModel):
@@ -74,7 +83,7 @@ class UserRecord(UserOut):
 
 
 class EmailVerificationRequest(BaseModel):
-    token: str
+    token: str = Field(..., min_length=16, max_length=256, pattern=r"^[A-Za-z0-9_\-]+$")
 
 
 class PasswordResetRequest(BaseModel):
@@ -82,5 +91,14 @@ class PasswordResetRequest(BaseModel):
 
 
 class PasswordResetConfirm(BaseModel):
-    token: str
-    password: str
+    token: str = Field(..., min_length=16, max_length=256, pattern=r"^[A-Za-z0-9_\-]+$")
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def password_complexity(self) -> "PasswordResetConfirm":
+        pwd = self.password
+        has_letter = any(c.isalpha() for c in pwd)
+        has_digit = any(c.isdigit() for c in pwd)
+        if not (has_letter and has_digit):
+            raise ValueError("Password must include at least one letter and one digit")
+        return self

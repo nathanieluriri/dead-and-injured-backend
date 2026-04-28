@@ -1,17 +1,37 @@
 from __future__ import annotations
 
+import enum
 import logging
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from urllib.parse import urlencode
 
+from core.config import get_settings
 from email_templates.changing_password_template import generate_changing_password_email_from_template
 from email_templates.new_sign_in import generate_new_signin_warning_email_from_template
 from email_templates.otp_template import generate_login_otp_email_from_template
 
 logger = logging.getLogger(__name__)
+
+
+class EmailDispatch(str, enum.Enum):
+    """Outcome of an enqueue_email call.
+
+    QUEUED  — handed off to the broker; the worker will deliver.
+    DELAYED — broker unreachable; we logged the failure and the caller
+              should surface a degraded UX. Without an outbox sweeper
+              (see todo.md), DELAYED currently means "lost."
+    """
+
+    QUEUED = "queued"
+    DELAYED = "delayed"
+
+
+def _build_link(base_url: str, token: str) -> str:
+    return f"{base_url}?{urlencode({'token': token})}"
 
 
 def _smtp_settings() -> dict[str, str | int] | None:
@@ -106,18 +126,25 @@ def send_new_signin_email(receiver_email: str, username: str) -> None:
 
 
 def send_password_reset_email(receiver_email: str, username: str, token: str) -> None:
-    html_body = generate_login_otp_email_from_template(otp_code=token, user_email=receiver_email)
+    settings = get_settings()
+    reset_link = _build_link(settings.password_reset_url, token)
+    html_body = generate_login_otp_email_from_template(otp_code=reset_link, user_email=receiver_email)
     _deliver(
         subject="Reset your password",
         receiver_email=receiver_email,
         html_body=html_body,
-        plain_text=f"Hello {username}, use this token to reset your password: {token}",
+        plain_text=(
+            f"Hello {username}, click the following link to reset your password "
+            f"(valid for {settings.password_reset_ttl_minutes} minutes): {reset_link}"
+        ),
     )
 
 
 def send_email_verification_email(receiver_email: str, username: str, token: str) -> None:
+    settings = get_settings()
+    verify_link = _build_link(settings.email_verification_url, token)
     html_body = generate_changing_password_email_from_template(
-        otp_code=token,
+        otp_code=verify_link,
         user_email=receiver_email,
         avatar_image_link="https://iili.io/3DBDnYg.png",
     )
@@ -125,7 +152,10 @@ def send_email_verification_email(receiver_email: str, username: str, token: str
         subject="Verify your email",
         receiver_email=receiver_email,
         html_body=html_body,
-        plain_text=f"Hello {username}, verify your email with this token: {token}",
+        plain_text=(
+            f"Hello {username}, verify your email by visiting "
+            f"(valid for {settings.email_verification_ttl_minutes} minutes): {verify_link}"
+        ),
     )
 
 
@@ -157,11 +187,14 @@ def dispatch_email(kind: str, payload: dict[str, str]) -> None:
         raise
 
 
-def enqueue_email(kind: str, payload: dict[str, str]) -> None:
+def enqueue_email(kind: str, payload: dict[str, str]) -> EmailDispatch:
     try:
         from core.background_task import send_email_task
 
         send_email_task.delay(kind, payload)
+        return EmailDispatch.QUEUED
     except Exception:
-        logger.exception("Falling back to inline email dispatch for kind=%s", kind)
-        dispatch_email(kind=kind, payload=payload)
+        # Do not block the request thread by sending inline if the broker is
+        # unavailable. Log loudly so ops can re-queue once the broker is back.
+        logger.exception("Email broker unavailable; dropping email kind=%s", kind)
+        return EmailDispatch.DELAYED

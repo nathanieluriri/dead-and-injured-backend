@@ -33,7 +33,7 @@ from schemas.user import (
     UserSignup,
     UserUpdate,
 )
-from services.email_service import enqueue_email
+from services.email_service import EmailDispatch, enqueue_email
 
 DEFAULT_STARTER_POWERUPS: list[dict[str, str | int]] = [
     {"id": "static-screen", "name": "Static Screen", "description": "Opponent's tray shuffles for their next turn.", "rarity": "common", "category": "offensive", "count": 3},
@@ -61,6 +61,7 @@ class AuthSession:
     user: UserOut
     access_token: str
     refresh_token: str
+    verification_email: EmailDispatch = EmailDispatch.QUEUED
 
 
 def _safe_user(user: UserRecord | UserOut) -> UserOut:
@@ -92,6 +93,15 @@ async def _create_email_verification(user: UserOut) -> str:
     return token
 
 
+async def _rollback_signup(user_id: str) -> None:
+    await db.users.delete_one({"_id": ObjectId(user_id)})
+    await db.inventory.delete_many({"user_id": user_id})
+    await db.loadouts.delete_many({"user_id": user_id})
+    await db.wallets.delete_many({"user_id": user_id})
+    await db.notifications.delete_many({"user_id": user_id})
+    await db.email_verification_tokens.delete_many({"user_id": user_id})
+
+
 async def add_user(user_data: UserSignup) -> AuthSession:
     existing_user = await get_user(filter_dict={"email": user_data.email})
     if existing_user is not None:
@@ -102,22 +112,28 @@ async def add_user(user_data: UserSignup) -> AuthSession:
         raise HTTPException(status_code=409, detail="Username already exists")
 
     new_user = await create_user(UserCreate(**user_data.model_dump()))
-    await db.inventory.insert_one({"user_id": new_user.id, "items": DEFAULT_STARTER_POWERUPS, "updated_at": int(time.time())})
-    await db.loadouts.insert_one({"user_id": new_user.id, "slots": ["peek-out", "peek-in", "shield"], "updated_at": int(time.time())})
-    await db.wallets.insert_one({"user_id": new_user.id, "balance": 1284, "currency": "coins", "updated_at": int(time.time())})
-    await db.notifications.insert_one(
-        {
-            "user_id": new_user.id,
-            "kind": "system",
-            "title": "Welcome to Dead & Injured",
-            "body": "Your inventory and wallet are ready.",
-            "unread": True,
-            "created_at": int(time.time()),
-        }
-    )
-    access_token, refresh_token = await _issue_session(new_user.id)
-    verification_token = await _create_email_verification(new_user)
-    enqueue_email(
+    try:
+        now = int(time.time())
+        await db.inventory.insert_one({"user_id": new_user.id, "items": DEFAULT_STARTER_POWERUPS, "updated_at": now})
+        await db.loadouts.insert_one({"user_id": new_user.id, "slots": ["peek-out", "peek-in", "shield"], "updated_at": now})
+        await db.wallets.insert_one({"user_id": new_user.id, "balance": 1284, "currency": "coins", "updated_at": now})
+        await db.notifications.insert_one(
+            {
+                "user_id": new_user.id,
+                "kind": "system",
+                "title": "Welcome to Dead & Injured",
+                "body": "Your inventory and wallet are ready.",
+                "unread": True,
+                "created_at": now,
+            }
+        )
+        access_token, refresh_token = await _issue_session(new_user.id)
+        verification_token = await _create_email_verification(new_user)
+    except Exception:
+        await _rollback_signup(new_user.id)
+        raise
+
+    dispatch = enqueue_email(
         kind="verify_email",
         payload={
             "receiver_email": new_user.email,
@@ -129,6 +145,7 @@ async def add_user(user_data: UserSignup) -> AuthSession:
         user=new_user,
         access_token=access_token.accesstoken,
         refresh_token=refresh_token.refreshtoken,
+        verification_email=dispatch,
     )
 
 
@@ -187,16 +204,23 @@ async def refresh_user_tokens_reduce_number_of_logins(
 
 
 async def logout_user(access_token: str | None, refresh_token: str | None) -> None:
+    import logging
+
+    from bson.errors import InvalidId
+    from pymongo.errors import PyMongoError
+
+    logger = logging.getLogger(__name__)
+
     if access_token:
         try:
             await delete_access_token(accessToken=access_token)
-        except Exception:
-            pass
+        except (InvalidId, PyMongoError, HTTPException) as exc:
+            logger.warning("logout: failed to delete access token: %s", exc)
     if refresh_token:
         try:
             await delete_refresh_token(refreshToken=refresh_token)
-        except Exception:
-            pass
+        except (InvalidId, PyMongoError, HTTPException) as exc:
+            logger.warning("logout: failed to delete refresh token: %s", exc)
 
 
 async def remove_user(user_id: str) -> None:
@@ -223,6 +247,13 @@ async def retrieve_user_by_user_id(id: str) -> UserOut:
 
 
 async def retrieve_users(start: int = 0, stop: int = 100) -> List[UserOut]:
+    if start < 0:
+        raise HTTPException(status_code=400, detail="start must be >= 0")
+    max_page = settings.max_user_page_size
+    if stop <= start:
+        raise HTTPException(status_code=400, detail="stop must be greater than start")
+    if stop - start > max_page:
+        stop = start + max_page
     return await get_users(start=start, stop=stop)
 
 
@@ -261,10 +292,20 @@ async def verify_email(token: str) -> UserOut:
     return await retrieve_user_by_user_id(user_id)
 
 
-async def request_password_reset(email: str) -> None:
+async def request_password_reset(email: str) -> EmailDispatch:
+    """Always returns QUEUED.
+
+    The unknown-email branch short-circuits before ever calling the broker,
+    so a real broker outage would otherwise produce DELAYED for known emails
+    and QUEUED for unknown ones — turning the response into a free
+    broker-health probe and (for an attacker who already knows broker state)
+    an account-existence oracle. Until the unknown-email branch can probe
+    broker health symmetrically, both branches report QUEUED. The actual
+    enqueue outcome is still logged inside enqueue_email for ops.
+    """
     user = await get_user(filter_dict={"email": email})
     if user is None:
-        return
+        return EmailDispatch.QUEUED
 
     token = secrets.token_urlsafe(24)
     await db.password_reset_tokens.insert_one(
@@ -282,6 +323,23 @@ async def request_password_reset(email: str) -> None:
             "receiver_email": user.email,
             "username": user.username,
             "token": token,
+        },
+    )
+    return EmailDispatch.QUEUED
+
+
+async def resend_email_verification(user_id: str) -> EmailDispatch:
+    user = await retrieve_user_by_user_id(user_id)
+    if user.is_email_verified:
+        raise HTTPException(status_code=409, detail="Email already verified")
+
+    verification_token = await _create_email_verification(user)
+    return enqueue_email(
+        kind="verify_email",
+        payload={
+            "receiver_email": user.email,
+            "username": user.username,
+            "token": verification_token,
         },
     )
 

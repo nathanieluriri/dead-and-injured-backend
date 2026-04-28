@@ -1,138 +1,144 @@
-import jwt
 import datetime
-from datetime import timezone
-from core.database import db
-from dotenv import load_dotenv
+import logging
 import os
-import asyncio
+import random
+from datetime import timezone
+
+import jwt
 from bson import ObjectId
+from dotenv import load_dotenv
+
+from core.database import db
 
 load_dotenv()
 SECRETID = os.getenv("SECRETID")
 
+logger = logging.getLogger(__name__)
 
-async def get_secret_dict()->dict:
-    result =await db.secret_keys.find_one({"_id":ObjectId(SECRETID)})
-    result.pop('_id')
-    return result
 
+class TokenError(Exception):
+    """Base error raised when a JWT cannot be validated."""
+
+
+class TokenExpiredError(TokenError):
+    """Raised when the token's signature has expired."""
+
+
+class TokenInvalidError(TokenError):
+    """Raised when the token is malformed or signed with an unknown key."""
+
+
+_secret_cache: dict[str, str] | None = None
+
+
+async def _load_secret_dict() -> dict[str, str]:
+    if not SECRETID:
+        raise RuntimeError("SECRETID environment variable is not set")
+    result = await db.secret_keys.find_one({"_id": ObjectId(SECRETID)})
+    if not result:
+        raise RuntimeError("JWT signing secrets not found in database")
+    result.pop("_id", None)
+    if not result:
+        raise RuntimeError("JWT signing secrets payload is empty")
+    return {str(k): str(v) for k, v in result.items()}
+
+
+async def get_secret_dict() -> dict[str, str]:
+    global _secret_cache
+    if _secret_cache is None:
+        _secret_cache = await _load_secret_dict()
+    return _secret_cache
 
 
 async def get_secret_and_header():
-    
-    import random
-    
     secrets = await get_secret_dict()
-    
     random_key = random.choice(list(secrets.keys()))
     random_secret = secrets[random_key]
-    SECRET_KEYS={random_key:random_secret}
-    HEADERS = {"kid":random_key}
-    result = {
-        "SECRET_KEY":SECRET_KEYS,
-        "HEADERS":HEADERS
+    return {
+        "SECRET_KEY": {random_key: random_secret},
+        "HEADERS": {"kid": random_key},
     }
-    
-    return result
-
 
 
 async def create_jwt_member_token(token):
     secrets = await get_secret_and_header()
-    SECRET_KEYS= secrets['SECRET_KEY']
-    headers= secrets['HEADERS']
-    
-    payload = {
-        'accessToken': token,
-        'role':'member',
-        'exp': datetime.datetime.now(timezone.utc) + datetime.timedelta(minutes=15)
-    }
-    
-    
-    token = jwt.encode(payload, SECRET_KEYS[headers['kid']], algorithm='HS256', headers=headers)
+    SECRET_KEYS = secrets["SECRET_KEY"]
+    headers = secrets["HEADERS"]
 
-    return token
+    payload = {
+        "accessToken": token,
+        "role": "member",
+        "exp": datetime.datetime.now(timezone.utc) + datetime.timedelta(minutes=15),
+    }
+
+    return jwt.encode(payload, SECRET_KEYS[headers["kid"]], algorithm="HS256", headers=headers)
+
 
 async def create_jwt_admin_token(token):
     secrets = await get_secret_and_header()
-    SECRET_KEYS= secrets['SECRET_KEY']
-    headers= secrets['HEADERS']
-    
+    SECRET_KEYS = secrets["SECRET_KEY"]
+    headers = secrets["HEADERS"]
+
     payload = {
-        'accessToken': token,
-        'role':'admin',
-        'exp': datetime.datetime.now(timezone.utc) + datetime.timedelta(minutes=15)
+        "accessToken": token,
+        "role": "admin",
+        "exp": datetime.datetime.now(timezone.utc) + datetime.timedelta(minutes=15),
     }
 
-    
-    token = jwt.encode(payload, SECRET_KEYS[headers['kid']], algorithm='HS256', headers=headers)
-
-    return token
-
+    return jwt.encode(payload, SECRET_KEYS[headers["kid"]], algorithm="HS256", headers=headers)
 
 
 async def decode_jwt_token(token):
-    """_summary_
+    """Decode a JWT and return the payload.
 
-    Args:
-        token (_type_): _description_
-
-    Raises:
-        Exception: _description_
-
-    Returns:
-        if decoded true: {'accessToken': '682c99f395ff4782fbea010f', 'role': 'admin', 'exp': 1747825460}
+    Raises TokenExpiredError if the signature has expired and TokenInvalidError
+    if the token is malformed, has an unknown kid, or fails verification.
+    Returns None only when the input token is falsy so callers can treat
+    "no token" distinctly from "bad token".
     """
+    if not token:
+        return None
+
     SECRET_KEYS = await get_secret_dict()
-    # Decode header to extract the `kid`
-    unverified_header = jwt.get_unverified_header(token)
-    kid = unverified_header['kid']
 
-    # Look up the correct key
-    key = SECRET_KEYS.get(kid)
-
-    if not key:
-        raise Exception("Unknown key ID")
-
-    # Now decode and verify
     try:
-        decoded = jwt.decode(token, key, algorithms=['HS256'])
-        return decoded
-    except jwt.exceptions.ExpiredSignatureError:
-        print("expired token")
-        return None
-    except jwt.exceptions.InvalidSignatureError:
-        print("invalid signature")
-        return None
-    except jwt.exceptions.DecodeError:
-        print("Malformed Token")
-        return None
+        unverified_header = jwt.get_unverified_header(token)
+    except jwt.exceptions.DecodeError as exc:
+        raise TokenInvalidError("Malformed token") from exc
+
+    kid = unverified_header.get("kid")
+    key = SECRET_KEYS.get(kid) if kid else None
+    if not key:
+        raise TokenInvalidError("Unknown key ID")
+
+    try:
+        return jwt.decode(token, key, algorithms=["HS256"])
+    except jwt.exceptions.ExpiredSignatureError as exc:
+        raise TokenExpiredError("Token expired") from exc
+    except jwt.exceptions.InvalidSignatureError as exc:
+        raise TokenInvalidError("Invalid signature") from exc
+    except jwt.exceptions.DecodeError as exc:
+        raise TokenInvalidError("Malformed token") from exc
+
 
 async def decode_jwt_token_without_expiration(token):
-    SECRET_KEYS = await get_secret_dict()
-    # Decode header to extract the `kid`
-    unverified_header = jwt.get_unverified_header(token)
-    kid = unverified_header['kid']
-
-    # Look up the correct key
-    key = SECRET_KEYS.get(kid)
-
-    if not key:
-        raise Exception("Unknown key ID")
-
-    # Now decode and verify
-    try:
-        decoded = jwt.decode(token, key, algorithms=['HS256'])
-        return decoded
-    except jwt.exceptions.ExpiredSignatureError:
-        print("expired token")
-        payload = decoded = jwt.decode(token, key, algorithms=['HS256'],options={"verify_exp": False})
-        return payload
-
-    except jwt.exceptions.DecodeError:
-        print("Malformed Token")
+    if not token:
         return None
 
+    SECRET_KEYS = await get_secret_dict()
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+    except jwt.exceptions.DecodeError as exc:
+        raise TokenInvalidError("Malformed token") from exc
 
+    kid = unverified_header.get("kid")
+    key = SECRET_KEYS.get(kid) if kid else None
+    if not key:
+        raise TokenInvalidError("Unknown key ID")
 
-
+    try:
+        return jwt.decode(token, key, algorithms=["HS256"])
+    except jwt.exceptions.ExpiredSignatureError:
+        return jwt.decode(token, key, algorithms=["HS256"], options={"verify_exp": False})
+    except jwt.exceptions.DecodeError as exc:
+        raise TokenInvalidError("Malformed token") from exc

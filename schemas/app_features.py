@@ -17,6 +17,7 @@ class ProfileSummary(BaseModel):
     joinedLabel: str
     bio: str | None = None
     avatar_url: str | None = None
+    isEmailVerified: bool = False
 
 
 class StatItem(BaseModel):

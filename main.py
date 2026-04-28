@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,8 +15,56 @@ from core.config import get_settings
 from core.rate_limit import limiter
 from schemas.response_schema import APIError, APIResponse, ok_response
 
+logger = logging.getLogger(__name__)
+
+
+def _configure_logging() -> None:
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        root_logger.setLevel(log_level)
+        return
+
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    root_logger.addHandler(stream_handler)
+
+    log_path = os.getenv("LOG_FILE")
+    if log_path:
+        rotating_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=int(os.getenv("LOG_MAX_BYTES", str(5 * 1024 * 1024))),
+            backupCount=int(os.getenv("LOG_BACKUP_COUNT", "5")),
+            encoding="utf-8",
+        )
+        rotating_handler.setFormatter(formatter)
+        root_logger.addHandler(rotating_handler)
+    root_logger.setLevel(log_level)
+
+
+_configure_logging()
 settings = get_settings()
-app = FastAPI(title=settings.app_name, root_path=settings.root_path)
+_is_production = settings.env == "production"
+
+logger.info(
+    "Resolved config: env=%s api_prefix=%s cookie_secure=%s cookie_samesite=%s "
+    "access_cookie=%s refresh_cookie=%s cors_origins=%s",
+    settings.env,
+    settings.api_prefix,
+    settings.cookie_secure,
+    settings.cookie_samesite,
+    settings.access_cookie_name,
+    settings.refresh_cookie_name,
+    settings.cors_origins,
+)
+app = FastAPI(
+    title=settings.app_name,
+    root_path=settings.root_path,
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
+)
 api_prefix = settings.api_prefix.rstrip("/")
 
 app.state.limiter = limiter
@@ -22,8 +74,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.cors_methods,
+    allow_headers=settings.cors_headers,
 )
 
 
@@ -75,13 +127,14 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
 
 
 @app.exception_handler(Exception)
-async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+async def unhandled_exception_handler(request: Request, _exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
     content = APIResponse(
         success=False,
         message="Internal server error",
         data=None,
         meta=None,
-        errors=[APIError(code="internal_error", message=str(exc))],
+        errors=[APIError(code="internal_error", message="An unexpected error occurred")],
     ).model_dump()
     return JSONResponse(status_code=500, content=content)
 

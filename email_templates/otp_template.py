@@ -1,4 +1,7 @@
+import logging
 from string import Template
+
+logger = logging.getLogger(__name__)
 
 otp_template_string = Template("""
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
@@ -60,5 +63,5 @@ def generate_login_otp_email_from_template(otp_code: str, user_email: str) -> st
             user_email=user_email
         )
     except KeyError as e:
-        print(f"Error: Missing template variable: {e}")
+        logger.error("Missing OTP template variable: %s", e)
         return None

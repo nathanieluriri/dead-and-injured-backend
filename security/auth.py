@@ -51,6 +51,27 @@ async def verify_token(
     return result
 
 
+async def verify_token_email_verified(
+    token: accessTokenOut = Depends(verify_token),
+) -> accessTokenOut:
+    """Authenticated dependency that also requires the user's email to be verified."""
+    from bson import ObjectId
+    from core.database import db
+
+    user = await db.users.find_one({"_id": ObjectId(token.userId)})
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+    if not user.get("is_email_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required",
+        )
+    return token
+
+
 async def verify_token_to_refresh(request: Request) -> tuple[str, refreshTokenOut]:
     refresh_token = request.cookies.get(settings.refresh_cookie_name)
     if not refresh_token:

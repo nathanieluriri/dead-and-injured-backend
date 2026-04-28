@@ -19,12 +19,17 @@ class accessTokenCreate(accessTokenBase):
     
 class accessTokenOut(accessTokenBase):
     dateCreated: int = Field(default_factory=lambda: int(time.time()))
-    accesstoken: Optional[str] =None
+    # Non-optional: the before-validator below always populates this from the
+    # Mongo _id. Treating it as Optional[str] downstream led to a wave of
+    # spurious "str | None" pyright errors at every call site.
+    accesstoken: str
     @model_validator(mode='before')
     def set_values(cls,values):
         if values is None:
             values = {}
-        values['accesstoken']= str(values.get('_id'))
+        if values.get('_id') is None and not values.get('accesstoken'):
+            raise ValueError("accessTokenOut requires either '_id' or 'accesstoken'")
+        values['accesstoken'] = str(values.get('_id') or values.get('accesstoken'))
         return values
     
     model_config = {
@@ -47,12 +52,14 @@ class refreshTokenCreate(refreshTokenBase):
 
     
 class refreshTokenOut(refreshTokenCreate):
-    refreshtoken: Optional[str] =None
+    refreshtoken: str
     @model_validator(mode='before')
     def set_values(cls,values):
         if values is None:
             values = {}
-        values['refreshtoken']= str(values.get('_id'))
+        if values.get('_id') is None and not values.get('refreshtoken'):
+            raise ValueError("refreshTokenOut requires either '_id' or 'refreshtoken'")
+        values['refreshtoken'] = str(values.get('_id') or values.get('refreshtoken'))
         return values
     
     model_config = {

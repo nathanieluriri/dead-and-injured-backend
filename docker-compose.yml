@@ -9,8 +9,13 @@ services:
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - MONGO_URL=${MONGO_URL}
+      - REDIS_URL=${REDIS_URL}
     volumes:
       - .:/app
+    depends_on:
+      - mongo
+      - redis
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
       interval: 30s
@@ -24,5 +29,32 @@ services:
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - MONGO_URL=${MONGO_URL}
+      - REDIS_URL=${REDIS_URL}
     volumes:
       - .:/app
+    depends_on:
+      - redis
+      - mongo
+    stop_grace_period: 60s
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  redis_data:

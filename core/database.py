@@ -12,14 +12,41 @@ if DB_TYPE == "sqlite":
 
     database_name = "db.db"
 
+    ALLOWED_TABLES: set[str] = {
+        "users",
+        "accessToken",
+        "refreshToken",
+        "secret_keys",
+        "email_verification_tokens",
+        "password_reset_tokens",
+        "password_reset_token",
+        "inventory",
+        "loadouts",
+        "wallets",
+        "notifications",
+        "players",
+        "games",
+        "matches",
+        "scores",
+        "leaderboards",
+        "secrets",
+        "app_features",
+    }
+
+    def _ensure_safe_table(table_name: str) -> None:
+        if table_name not in ALLOWED_TABLES:
+            raise ValueError("Unknown table")
+        if not table_name.isidentifier():
+            raise ValueError("Invalid table name")
+
     class DBFunctions:
         def __init__(self, table_name):
+            _ensure_safe_table(table_name)
             self.table_name = table_name
 
         @staticmethod
         def __insert(table_name: str, data: dict):
-            if not table_name.isidentifier():
-                raise ValueError("Invalid table name")
+            _ensure_safe_table(table_name)
 
             keys = ", ".join(data.keys())
             placeholders = ", ".join("?" for _ in data)
@@ -37,8 +64,7 @@ if DB_TYPE == "sqlite":
 
         @staticmethod
         def __update(table_name: str, data: dict, filter_dict: dict):
-            if not table_name.isidentifier():
-                raise ValueError("Invalid table name")
+            _ensure_safe_table(table_name)
 
             set_clause = ", ".join([f"{k} = ?" for k in data.keys()])
             where_clause = " AND ".join([f"{k} = ?" for k in filter_dict.keys()])
@@ -54,8 +80,7 @@ if DB_TYPE == "sqlite":
 
         @staticmethod
         def __delete(table_name: str, filter_dict: dict, limit: int = None):
-            if not table_name.isidentifier():
-                raise ValueError("Invalid table name")
+            _ensure_safe_table(table_name)
 
             where_clause = " AND ".join([f"{k} = ?" for k in filter_dict])
             values = list(filter_dict.values())

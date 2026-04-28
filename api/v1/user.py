@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 
 from core.config import get_settings
 from core.cookies import clear_auth_cookies, set_auth_cookies
@@ -20,6 +20,7 @@ from schemas.user import (
     UserUpdate,
 )
 from security.auth import verify_token, verify_token_to_refresh
+from services.email_service import EmailDispatch
 from services.user_service import (
     add_user,
     authenticate_user,
@@ -28,24 +29,39 @@ from services.user_service import (
     refresh_user_tokens_reduce_number_of_logins,
     remove_user,
     request_password_reset,
+    resend_email_verification,
     retrieve_user_by_user_id,
     retrieve_users,
     update_user_by_id,
     verify_email,
 )
 
+_DELAYED_EMAIL_MESSAGE = (
+    "We couldn't send your verification email right now. "
+    "Once you can sign in, request a new link from your account."
+)
+
+
+def _email_meta(dispatch: EmailDispatch) -> dict[str, str]:
+    return {"verification_email": dispatch.value}
+
 router = APIRouter(prefix="/users", tags=["Users"])
 settings = get_settings()
 
 
 @router.get(
-    "/{start}/{stop}",
+    "",
     response_model=APIResponse[List[UserOut]],
     response_model_exclude_none=True,
     dependencies=[Depends(verify_token)],
 )
-async def list_users(start: int = 0, stop: int = 100) -> APIResponse[List[UserOut]]:
-    items = await retrieve_users(start, stop)
+@limiter.limit("30/minute")
+async def list_users(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=settings.max_user_page_size),
+) -> APIResponse[List[UserOut]]:
+    items = await retrieve_users(offset, offset + limit)
     return ok_response(data=items, message="Users fetched successfully")
 
 
@@ -55,7 +71,11 @@ async def list_users(start: int = 0, stop: int = 100) -> APIResponse[List[UserOu
     dependencies=[Depends(verify_token)],
     response_model_exclude_none=True,
 )
-async def get_my_user(token: accessTokenOut = Depends(verify_token)) -> APIResponse[UserOut]:
+@limiter.limit("60/minute")
+async def get_my_user(
+    request: Request,
+    token: accessTokenOut = Depends(verify_token),
+) -> APIResponse[UserOut]:
     item = await retrieve_user_by_user_id(id=token.userId)
     return ok_response(data=item, message="User fetched successfully")
 
@@ -66,7 +86,9 @@ async def get_my_user(token: accessTokenOut = Depends(verify_token)) -> APIRespo
     dependencies=[Depends(verify_token)],
     response_model_exclude_none=True,
 )
+@limiter.limit("20/minute")
 async def patch_my_user(
+    request: Request,
     user_data: UserUpdate,
     token: accessTokenOut = Depends(verify_token),
 ) -> APIResponse[UserOut]:
@@ -79,7 +101,15 @@ async def patch_my_user(
 async def signup_new_user(request: Request, user_data: UserSignup, response: Response) -> APIResponse[UserOut]:
     session = await add_user(user_data=user_data)
     set_auth_cookies(response, session.access_token, session.refresh_token)
-    return ok_response(data=session.user, message="Account created successfully")
+    if session.verification_email is EmailDispatch.DELAYED:
+        message = f"Account created. {_DELAYED_EMAIL_MESSAGE}"
+    else:
+        message = "Account created. Verification email on the way."
+    return ok_response(
+        data=session.user,
+        message=message,
+        meta=_email_meta(session.verification_email),
+    )
 
 
 @router.post("/login", response_model=APIResponse[UserOut])
@@ -91,7 +121,6 @@ async def login_user(request: Request, user_data: UserLogin, response: Response)
 
 
 @router.post("/refresh", response_model=APIResponse[UserOut])
-@router.post("/refesh", response_model=APIResponse[UserOut], include_in_schema=False)
 @limiter.limit("30/minute")
 async def refresh_user_tokens(
     request: Request,
@@ -130,10 +159,31 @@ async def verify_email_endpoint(payload: EmailVerificationRequest) -> APIRespons
 @router.post("/password-reset/request", response_model=APIResponse[dict[str, str]])
 @limiter.limit("5/minute")
 async def request_password_reset_endpoint(request: Request, payload: PasswordResetRequest) -> APIResponse[dict[str, str]]:
-    await request_password_reset(payload.email)
+    # Always reported as QUEUED to avoid leaking broker health to a probing
+    # caller; see request_password_reset's docstring for the trade-off.
+    dispatch = await request_password_reset(payload.email)
     return ok_response(
-        data={"status": "queued"},
+        data={"status": dispatch.value},
         message="If the account exists, a password reset email has been queued",
+        meta=_email_meta(dispatch),
+    )
+
+
+@router.post("/verify-email/resend", response_model=APIResponse[dict[str, str]], dependencies=[Depends(verify_token)])
+@limiter.limit("3/minute")
+async def resend_verification_email_endpoint(
+    request: Request,
+    token: accessTokenOut = Depends(verify_token),
+) -> APIResponse[dict[str, str]]:
+    dispatch = await resend_email_verification(user_id=token.userId)
+    if dispatch is EmailDispatch.DELAYED:
+        message = "We couldn't send the verification email right now. Try again in a few minutes."
+    else:
+        message = "Verification email queued"
+    return ok_response(
+        data={"status": dispatch.value},
+        message=message,
+        meta=_email_meta(dispatch),
     )
 
 
