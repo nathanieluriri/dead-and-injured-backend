@@ -37,7 +37,8 @@ class LeaderboardOut(LeaderboardBase):
     
     @model_validator(mode='before')
     def set_dynamic_values(cls,values):
-        values['id']= str(values.get('_id'))
+        if isinstance(values, dict) and values.get('_id') is not None:
+            values['id'] = str(values['_id'])
         return values
     class Config:
         from_attributes = True

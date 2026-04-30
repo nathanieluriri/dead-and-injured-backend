@@ -128,7 +128,8 @@ class UserOut(BaseModel):
     @classmethod
     def set_dynamic_values(cls, values: dict | "UserOut") -> dict | "UserOut":
         if isinstance(values, dict):
-            values["id"] = str(values.get("_id"))
+            if values.get("_id") is not None:
+                values["id"] = str(values["_id"])
             if not values.get("profile_media_url") and values.get("avatar_url"):
                 values["profile_media_url"] = values["avatar_url"]
             if not values.get("avatar_url") and values.get("profile_media_url"):
