@@ -22,13 +22,9 @@ jobs:
 
             APP_DIR="$HOME/dead-and-injured-backend"
 
-            if [ ! -d "$APP_DIR" ]; then
-              echo "Creating $APP_DIR"
-              mkdir -p "$APP_DIR"
-            fi
-
             if [ ! -d "$APP_DIR/.git" ]; then
-              echo "Cloning repo into $APP_DIR"
+              echo "No git repo at $APP_DIR — cleaning and cloning"
+              rm -rf "$APP_DIR"
               git clone https://github.com/nathanieluriri/dead-and-injured-backend.git "$APP_DIR"
             fi
 
