@@ -3,10 +3,12 @@ from __future__ import annotations
 from typing import List
 
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
+from fastapi.responses import RedirectResponse
 
 from core.config import get_settings
 from core.cookies import clear_auth_cookies, set_auth_cookies
 from core.rate_limit import limiter
+from schemas.google_oauth import GoogleAuthExchangeIn, GoogleAuthStartOut
 from schemas.response_schema import APIResponse, ok_response
 from schemas.tokens_schema import accessTokenOut
 from schemas.user import (
@@ -21,6 +23,11 @@ from schemas.user import (
 )
 from security.auth import verify_token, verify_token_to_refresh
 from services.email_service import EmailDispatch
+from services.google_oauth_service import (
+    build_authorize_url,
+    consume_exchange_code,
+    handle_callback,
+)
 from services.user_service import (
     add_user,
     authenticate_user,
@@ -47,6 +54,7 @@ def _email_meta(dispatch: EmailDispatch) -> dict[str, str]:
     return {"verification_email": dispatch.value}
 
 router = APIRouter(prefix="/users", tags=["Users"])
+google_alias_router = APIRouter(prefix="/user", tags=["Users"], include_in_schema=False)
 settings = get_settings()
 
 
@@ -219,3 +227,47 @@ async def delete_user_account(
     await remove_user(user_id=token.userId)
     clear_auth_cookies(response)
     return ok_response(data={"status": "deleted"}, message="Account deleted successfully")
+
+
+@router.get("/google/start", response_model=APIResponse[GoogleAuthStartOut])
+@limiter.limit("20/minute")
+async def google_oauth_start(
+    request: Request,
+    target: str | None = Query(None, max_length=64, pattern=r"^[A-Za-z0-9_\-]+$"),
+    redirect: bool = Query(False),
+) -> APIResponse[GoogleAuthStartOut] | RedirectResponse:
+    result = await build_authorize_url(target=target)
+    if redirect:
+        return RedirectResponse(url=result.authorize_url, status_code=status.HTTP_302_FOUND)
+    return ok_response(
+        data=GoogleAuthStartOut(
+            authorize_url=result.authorize_url,
+            state=result.state,
+            target=result.target,
+        ),
+        message="Google OAuth authorize URL generated",
+    )
+
+
+@router.get("/google/callback", include_in_schema=False)
+@google_alias_router.get("/google/callback", include_in_schema=False)
+async def google_oauth_callback(
+    request: Request,
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+    error: str | None = Query(None),
+) -> RedirectResponse:
+    result = await handle_callback(code=code, state=state, error=error)
+    return RedirectResponse(url=result.redirect_url, status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/google/exchange", response_model=APIResponse[UserOut])
+@limiter.limit("20/minute")
+async def google_oauth_exchange(
+    request: Request,
+    payload: GoogleAuthExchangeIn,
+    response: Response,
+) -> APIResponse[UserOut]:
+    session = await consume_exchange_code(payload.code)
+    set_auth_cookies(response, session.access_token, session.refresh_token)
+    return ok_response(data=session.user, message="Google sign-in successful")

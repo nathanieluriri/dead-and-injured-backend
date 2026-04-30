@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 
 _DEFAULT_CORS_METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
@@ -21,6 +25,31 @@ def _split_csv(raw_value: str, default: list[str]) -> list[str]:
     return values or default
 
 
+def _parse_google_redirect_targets(raw_value: str) -> dict[str, dict[str, str]]:
+    if not raw_value:
+        return {}
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        logger.warning("GOOGLE_OAUTH_REDIRECT_TARGETS is not valid JSON; ignoring")
+        return {}
+
+    if not isinstance(parsed, dict):
+        logger.warning("GOOGLE_OAUTH_REDIRECT_TARGETS must be a JSON object; ignoring")
+        return {}
+
+    cleaned: dict[str, dict[str, str]] = {}
+    for key, value in parsed.items():
+        if not isinstance(value, dict):
+            continue
+        success = value.get("success")
+        error = value.get("error")
+        if not isinstance(success, str) or not isinstance(error, str):
+            continue
+        cleaned[str(key)] = {"success": success, "error": error}
+    return cleaned
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -34,6 +63,7 @@ class Settings:
     refresh_cookie_name: str
     cookie_secure: bool
     cookie_samesite: str
+    cookie_domain: str
     access_token_ttl_days: int
     refresh_token_ttl_days: int
     email_verification_ttl_minutes: int
@@ -54,6 +84,12 @@ class Settings:
     redis_url: str
     celery_broker_url: str
     celery_result_backend: str
+    google_client_id: str
+    google_client_secret: str
+    google_oauth_callback_url: str
+    google_oauth_default_target: str
+    google_oauth_exchange_ttl_seconds: int
+    google_oauth_redirect_targets: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -76,7 +112,14 @@ class Settings:
         if env == "production" and not cookie_secure:
             raise RuntimeError("COOKIE_SECURE must be true when ENV=production")
 
+        cookie_domain = os.getenv("COOKIE_DOMAIN", "").strip()
+
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+        google_redirect_targets = _parse_google_redirect_targets(
+            os.getenv("GOOGLE_OAUTH_REDIRECT_TARGETS", ""),
+        )
+        google_default_target = os.getenv("GOOGLE_OAUTH_DEFAULT_TARGET", "local").strip() or "local"
 
         return cls(
             app_name=os.getenv("APP_NAME", "Dead and Injured API"),
@@ -90,6 +133,7 @@ class Settings:
             refresh_cookie_name=os.getenv("REFRESH_COOKIE_NAME", "di_refresh"),
             cookie_secure=cookie_secure,
             cookie_samesite=cookie_samesite,
+            cookie_domain=cookie_domain,
             access_token_ttl_days=int(os.getenv("ACCESS_TOKEN_TTL_DAYS", "10")),
             refresh_token_ttl_days=int(os.getenv("REFRESH_TOKEN_TTL_DAYS", "30")),
             email_verification_ttl_minutes=int(os.getenv("EMAIL_VERIFICATION_TTL_MINUTES", "30")),
@@ -116,6 +160,12 @@ class Settings:
             redis_url=redis_url,
             celery_broker_url=os.getenv("CELERY_BROKER_URL", redis_url),
             celery_result_backend=os.getenv("CELERY_RESULT_BACKEND", redis_url),
+            google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+            google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
+            google_oauth_callback_url=os.getenv("GOOGLE_OAUTH_CALLBACK_URL", ""),
+            google_oauth_default_target=google_default_target,
+            google_oauth_exchange_ttl_seconds=int(os.getenv("GOOGLE_OAUTH_EXCHANGE_TTL_SECONDS", "120")),
+            google_oauth_redirect_targets=google_redirect_targets,
         )
 
 

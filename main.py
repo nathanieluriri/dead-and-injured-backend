@@ -162,6 +162,7 @@ from api.v1.match import router as v1_match_router
 from api.v1.player import router as v1_player_router
 from api.v1.scores import router as v1_scores_router
 from api.v1.secret import router as v1_secret_router
+from api.v1.user import google_alias_router as v1_google_alias_router
 from api.v1.user import router as v1_user_router
 
 app.include_router(v1_app_features_router, prefix=api_prefix)
@@ -172,4 +173,5 @@ app.include_router(v1_player_router, prefix=api_prefix)
 app.include_router(v1_scores_router, prefix=api_prefix)
 app.include_router(v1_secret_router, prefix=api_prefix)
 app.include_router(v1_user_router, prefix=api_prefix)
+app.include_router(v1_google_alias_router, prefix=api_prefix)
 # --- auto-routes-end ---
