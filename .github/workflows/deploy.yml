@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -19,17 +20,22 @@ jobs:
           script: |
             set -e
 
-            APP_DIR="$HOME/visichek-blog-backend"
-            REPO_SSH="git@github.com:Visichek/visichek-website-backend.git"
+            APP_DIR="$HOME/dead-and-injured-backend"
+
+            if [ ! -d "$APP_DIR" ]; then
+              echo "Creating $APP_DIR"
+              mkdir -p "$APP_DIR"
+            fi
 
             if [ ! -d "$APP_DIR/.git" ]; then
-              git clone "$REPO_SSH" "$APP_DIR"
+              echo "Cloning repo into $APP_DIR"
+              git clone https://github.com/nathanieluriri/dead-and-injured-backend.git "$APP_DIR"
             fi
 
             cd "$APP_DIR"
             git pull origin master
 
-            DOMAIN="blog.visichek.app"
+            DOMAIN="game-api.visichek.app"
             EMAIL="uririnathaniel@gmail.com"
             APP_PORT="7880"
             SETUP_SCRIPT="$APP_DIR/server_automations/setup-ngnix-letsencryp.sh"
