@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field, model_validator
-from pydantic.generics import GenericModel
 
 T = TypeVar("T")
 
@@ -14,7 +13,7 @@ class APIError(BaseModel):
     field: str | None = None
 
 
-class APIResponse(GenericModel, Generic[T]):
+class APIResponse(BaseModel, Generic[T]):
     success: bool
     message: str
     data: T | None = None
