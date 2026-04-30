@@ -29,7 +29,7 @@ from services.user_service import (
 
 logger = logging.getLogger(__name__)
 
-GUEST_EMAIL_DOMAIN = "guest.dead-and-injured.local"
+GUEST_EMAIL_DOMAIN = "guest.dead-and-injured.example"
 GUEST_USERNAME_PREFIX = "guest"
 GUEST_TOKEN_ALPHABET = string.ascii_lowercase + string.digits
 

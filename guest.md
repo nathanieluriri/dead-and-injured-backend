@@ -32,7 +32,7 @@ Each guest user document carries:
 |---------------|---------|------------------------------------------------------------|
 | `is_guest`    | `bool`  | `true` for the lifetime of the guest                       |
 | `expires_at`  | `int`   | Unix seconds (UTC). Set to now + `GUEST_USER_TTL_DAYS`     |
-| `email`       | string  | Synthetic — `guest-<random>@guest.dead-and-injured.local`  |
+| `email`       | string  | Synthetic — `guest-<random>@guest.dead-and-injured.example`  |
 | `username`    | string  | Synthetic — `guest-<random>` (locked until upgrade)        |
 | `password`    | string  | Random 32-byte secret hashed with bcrypt; never returned   |
 | `is_email_verified` | `bool` | `false`                                              |
@@ -74,7 +74,7 @@ Provision a brand-new guest user and return a session.
   "data": {
     "id": "...",
     "username": "guest-abcdef12",
-    "email": "guest-...@guest.dead-and-injured.local",
+    "email": "guest-...@guest.dead-and-injured.example",
     "is_guest": true,
     "expires_at": 1714435200,
     "is_email_verified": false,
@@ -175,7 +175,7 @@ Other update fields (`avatar_url`, `bio`, `profile_media_*`) work for guests.
 
 ### Email verification
 
-A guest's email is the synthetic `guest-...@guest.dead-and-injured.local`. Trying to "verify" it via `POST /users/verify-email/resend` will queue an email to that synthetic address that nobody can read. There is no UX value in calling that endpoint as a guest — upgrade first, then verify the real address.
+A guest's email is the synthetic `guest-...@guest.dead-and-injured.example`. Trying to "verify" it via `POST /users/verify-email/resend` will queue an email to that synthetic address that nobody can read. There is no UX value in calling that endpoint as a guest — upgrade first, then verify the real address.
 
 ---
 
@@ -235,7 +235,7 @@ db.users.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0, partialFilterEx
 - The synthetic guest password is `secrets.token_urlsafe(32) + "Aa1"`. It satisfies the password complexity validator and is hashed with bcrypt before storage; the cleartext is discarded immediately.
 - Guest users start with `is_email_verified=false`. Endpoints gated on `verify_token_email_verified` will refuse a guest. If you want guests on those endpoints, the gate needs to relax for `is_guest=true` users — review on a case-by-case basis.
 - Upgrading rotates tokens. Any unrelated client still holding the guest cookies will be 401'd on the next call and must re-auth as the real user.
-- The synthetic email is only displayed in `UserOut.email`. Don't log it through normal email pipelines — it routes to a domain we don't own (`guest.dead-and-injured.local`).
+- The synthetic email is only displayed in `UserOut.email`. Don't log it through normal email pipelines — it routes to a domain we don't own (`guest.dead-and-injured.example`).
 
 ---
 
@@ -267,7 +267,7 @@ sessions.
 
 | # | Endpoint | Method | What goes wrong |
 |---|----------|--------|-----------------|
-| 4 | `/api/v1/users/password-reset/request` | `POST` | Sends the reset email to the synthetic `guest-…@guest.dead-and-injured.local` address. The email is queued by Resend, then bounces or is silently dropped — the user can never click the link. |
+| 4 | `/api/v1/users/password-reset/request` | `POST` | Sends the reset email to the synthetic `guest-…@guest.dead-and-injured.example` address. The email is queued by Resend, then bounces or is silently dropped — the user can never click the link. |
 | 5 | `/api/v1/users/password-reset/confirm` | `POST` | Requires a token from request (4) which the guest never receives. |
 | 6 | `/api/v1/users/verify-email/resend` | `POST` | Same problem — the verification email goes to the synthetic address. |
 | 7 | `/api/v1/users/verify-email` | `POST` | Requires a token from (6) which never arrives. (Even if it did flip `is_email_verified=true`, the account is still `is_guest=true`, so the username-change block remains.) |
