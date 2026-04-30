@@ -164,12 +164,12 @@ if DB_TYPE == "sqlite":
     db = DBWrapper()
 
 elif DB_TYPE == "mongodb":
-    from motor.motor_asyncio import AsyncIOMotorClient
+    from pymongo import AsyncMongoClient
 
     DB = os.getenv("DB_NAME")
     MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 
-    client = AsyncIOMotorClient(MONGO_URL)
+    client = AsyncMongoClient(MONGO_URL)
     db = client[DB]
 
 else:

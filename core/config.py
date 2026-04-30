@@ -174,7 +174,7 @@ class Settings:
         return cls(
             app_name=os.getenv("APP_NAME", "Dead and Injured API"),
             env=env,
-            root_path=os.getenv("API_ROOT_PATH", "/api/v1"),
+            root_path=os.getenv("API_ROOT_PATH", ""),
             api_prefix=os.getenv("API_PREFIX", "/api/v1"),
             cors_origins=cors_origins,
             cors_methods=cors_methods,
