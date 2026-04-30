@@ -89,6 +89,8 @@ class UserCreate(UserSignup):
     profile_media_filename: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_FILENAME_MAX_LENGTH)
     profile_media_size_bytes: int | None = Field(None, ge=1, le=PROFILE_MEDIA_SIZE_MAX_BYTES)
     is_email_verified: bool = False
+    is_guest: bool = False
+    expires_at: int | None = None
     rank: int | None = None
     date_created: int = Field(default_factory=lambda: int(time.time()))
     last_updated: int = Field(default_factory=lambda: int(time.time()))
@@ -116,6 +118,8 @@ class UserOut(BaseModel):
     profile_media_filename: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_FILENAME_MAX_LENGTH)
     profile_media_size_bytes: int | None = Field(None, ge=1, le=PROFILE_MEDIA_SIZE_MAX_BYTES)
     is_email_verified: bool = False
+    is_guest: bool = False
+    expires_at: Optional[int] = None
     rank: int | None = None
     date_created: Optional[int] = None
     last_updated: Optional[int] = None
@@ -157,6 +161,21 @@ class PasswordResetConfirm(BaseModel):
 
     @model_validator(mode="after")
     def password_complexity(self) -> "PasswordResetConfirm":
+        pwd = self.password
+        has_letter = any(c.isalpha() for c in pwd)
+        has_digit = any(c.isdigit() for c in pwd)
+        if not (has_letter and has_digit):
+            raise ValueError("Password must include at least one letter and one digit")
+        return self
+
+
+class GuestUpgradeRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    username: str | None = Field(None, min_length=3, max_length=32)
+
+    @model_validator(mode="after")
+    def password_complexity(self) -> "GuestUpgradeRequest":
         pwd = self.password
         has_letter = any(c.isalpha() for c in pwd)
         has_digit = any(c.isdigit() for c in pwd)

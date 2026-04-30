@@ -262,6 +262,14 @@ async def update_user_by_id(user_id: str, user_data: UserUpdate) -> UserOut:
         raise HTTPException(status_code=400, detail="Invalid user ID format")
 
     if user_data.username:
+        current = await get_user(filter_dict={"_id": ObjectId(user_id)})
+        if current is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if current.is_guest and user_data.username != current.username:
+            raise HTTPException(
+                status_code=403,
+                detail="Guest accounts cannot change usernames. Upgrade to a full account first.",
+            )
         existing_user = await get_user(filter_dict={"username": user_data.username})
         if existing_user is not None and existing_user.id != user_id:
             raise HTTPException(status_code=409, detail="Username already exists")

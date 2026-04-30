@@ -5,6 +5,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from functools import lru_cache
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,14 @@ _DEFAULT_CORS_HEADERS = [
     "Origin",
     "X-Requested-With",
     "X-CSRF-Token",
+]
+_BROWSER_ORIGIN_SCHEMES = {"http", "https"}
+
+# Always-trusted browser origins, regardless of env. Add the deployed frontend
+# hostnames here so that the OAuth + cookie flow works even if CORS_ORIGINS or
+# GOOGLE_OAUTH_REDIRECT_TARGETS is misconfigured for an environment.
+_ALWAYS_ALLOWED_ORIGINS: list[str] = [
+    "https://guess-grid.vercel.app",
 ]
 
 
@@ -48,6 +57,42 @@ def _parse_google_redirect_targets(raw_value: str) -> dict[str, dict[str, str]]:
             continue
         cleaned[str(key)] = {"success": success, "error": error}
     return cleaned
+
+
+def _origin_from_url(url: str) -> str | None:
+    """Return the browser-origin (scheme://host[:port]) for a URL, or None."""
+    try:
+        parsed = urlparse(url)
+    except (TypeError, ValueError):
+        return None
+    if parsed.scheme not in _BROWSER_ORIGIN_SCHEMES or not parsed.hostname:
+        return None
+    host = parsed.hostname.lower()
+    default_port = 443 if parsed.scheme == "https" else 80
+    if parsed.port and parsed.port != default_port:
+        return f"{parsed.scheme}://{host}:{parsed.port}"
+    return f"{parsed.scheme}://{host}"
+
+
+def _origins_from_redirect_targets(targets: dict[str, dict[str, str]]) -> list[str]:
+    seen: list[str] = []
+    for value in targets.values():
+        for url in (value.get("success"), value.get("error")):
+            if not url:
+                continue
+            origin = _origin_from_url(url)
+            if origin and origin not in seen:
+                seen.append(origin)
+    return seen
+
+
+def _merge_origins(*groups: list[str]) -> list[str]:
+    merged: list[str] = []
+    for group in groups:
+        for origin in group:
+            if origin and origin not in merged:
+                merged.append(origin)
+    return merged
 
 
 @dataclass(frozen=True)
@@ -89,15 +134,23 @@ class Settings:
     google_oauth_callback_url: str
     google_oauth_default_target: str
     google_oauth_exchange_ttl_seconds: int
+    guest_user_ttl_days: int
     google_oauth_redirect_targets: dict[str, dict[str, str]] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> "Settings":
         env = os.getenv("ENV", "development").lower()
 
-        cors_origins = _split_csv(
-            os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
-            ["http://localhost:3000", "http://127.0.0.1:3000"],
+        google_redirect_targets = _parse_google_redirect_targets(
+            os.getenv("GOOGLE_OAUTH_REDIRECT_TARGETS", ""),
+        )
+        cors_origins = _merge_origins(
+            _split_csv(
+                os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
+                ["http://localhost:3000", "http://127.0.0.1:3000"],
+            ),
+            _origins_from_redirect_targets(google_redirect_targets),
+            _ALWAYS_ALLOWED_ORIGINS,
         )
         cors_methods = _split_csv(os.getenv("CORS_METHODS", ""), _DEFAULT_CORS_METHODS)
         cors_headers = _split_csv(os.getenv("CORS_HEADERS", ""), _DEFAULT_CORS_HEADERS)
@@ -116,9 +169,6 @@ class Settings:
 
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-        google_redirect_targets = _parse_google_redirect_targets(
-            os.getenv("GOOGLE_OAUTH_REDIRECT_TARGETS", ""),
-        )
         google_default_target = os.getenv("GOOGLE_OAUTH_DEFAULT_TARGET", "local").strip() or "local"
 
         return cls(
@@ -165,6 +215,7 @@ class Settings:
             google_oauth_callback_url=os.getenv("GOOGLE_OAUTH_CALLBACK_URL", ""),
             google_oauth_default_target=google_default_target,
             google_oauth_exchange_ttl_seconds=int(os.getenv("GOOGLE_OAUTH_EXCHANGE_TTL_SECONDS", "120")),
+            guest_user_ttl_days=int(os.getenv("GUEST_USER_TTL_DAYS", "7")),
             google_oauth_redirect_targets=google_redirect_targets,
         )
 

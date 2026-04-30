@@ -13,6 +13,7 @@ from schemas.response_schema import APIResponse, ok_response
 from schemas.tokens_schema import accessTokenOut
 from schemas.user import (
     EmailVerificationRequest,
+    GuestUpgradeRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     UserLogin,
@@ -27,6 +28,10 @@ from services.google_oauth_service import (
     build_authorize_url,
     consume_exchange_code,
     handle_callback,
+)
+from services.guest_service import (
+    create_guest_session,
+    upgrade_guest_to_user,
 )
 from services.user_service import (
     add_user,
@@ -271,3 +276,52 @@ async def google_oauth_exchange(
     session = await consume_exchange_code(payload.code)
     set_auth_cookies(response, session.access_token, session.refresh_token)
     return ok_response(data=session.user, message="Google sign-in successful")
+
+
+@router.post(
+    "/guest",
+    response_model=APIResponse[UserOut],
+    response_model_exclude_none=True,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("10/minute")
+async def create_guest_user(request: Request, response: Response) -> APIResponse[UserOut]:
+    session = await create_guest_session()
+    set_auth_cookies(response, session.access_token, session.refresh_token)
+    meta: dict[str, str | int] = {"is_guest": "true"}
+    if session.user.expires_at is not None:
+        meta["expires_at"] = session.user.expires_at
+    return ok_response(
+        data=session.user,
+        message="Guest session created",
+        meta=meta,
+    )
+
+
+@router.post(
+    "/guest/upgrade",
+    response_model=APIResponse[UserOut],
+    response_model_exclude_none=True,
+    dependencies=[Depends(verify_token)],
+)
+@limiter.limit("5/minute")
+async def upgrade_guest_account(
+    request: Request,
+    payload: GuestUpgradeRequest,
+    response: Response,
+    token: accessTokenOut = Depends(verify_token),
+) -> APIResponse[UserOut]:
+    session = await upgrade_guest_to_user(user_id=token.userId, payload=payload)
+    set_auth_cookies(response, session.access_token, session.refresh_token)
+    if session.verification_email is EmailDispatch.DELAYED:
+        message = (
+            "Account upgraded. We couldn't send your verification email right now; "
+            "request a new link from your account."
+        )
+    else:
+        message = "Account upgraded. Verification email on the way."
+    return ok_response(
+        data=session.user,
+        message=message,
+        meta=_email_meta(session.verification_email),
+    )
