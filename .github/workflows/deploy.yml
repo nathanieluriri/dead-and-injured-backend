@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            APP_DIR="$HOME/visichek-blog-backend"
+            REPO_SSH="git@github.com:Visichek/visichek-website-backend.git"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone "$REPO_SSH" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git pull origin master
+
+            DOMAIN="blog.visichek.app"
+            EMAIL="uririnathaniel@gmail.com"
+            APP_PORT="7880"
+            SETUP_SCRIPT="$APP_DIR/server_automations/setup-ngnix-letsencryp.sh"
+
+            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+              echo "Cert for $DOMAIN already present — running dry-run renewal"
+              sudo certbot renew --cert-name "$DOMAIN" --dry-run
+            else
+              echo "No cert for $DOMAIN — running nginx + Let's Encrypt setup"
+              chmod +x "$SETUP_SCRIPT"
+              "$SETUP_SCRIPT" "$DOMAIN" "$APP_PORT" "$EMAIL"
+            fi
+
+            docker compose down
+            docker compose up --build -d

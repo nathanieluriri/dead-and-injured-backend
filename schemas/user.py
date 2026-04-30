@@ -1,12 +1,39 @@
 from __future__ import annotations
 
 import time
+from enum import Enum
 from typing import Optional
+from typing import Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
 from schemas.imports import BaseModel, EmailStr, ObjectId
 from security.hash import hash_password
+
+PROFILE_MEDIA_URL_MAX_LENGTH = 2048
+PROFILE_MEDIA_FILENAME_MAX_LENGTH = 255
+PROFILE_MEDIA_SIZE_MAX_BYTES = 40 * 1024 * 1024
+
+ProfileMediaContentType = Literal[
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "image/avif",
+    "image/bmp",
+    "application/json",
+    "application/zip",
+    "video/mp4",
+    "video/quicktime",
+    "video/webm",
+    "video/x-matroska",
+]
+
+
+class ProfileMediaKind(str, Enum):
+    image = "image"
+    lottie = "lottie"
+    video = "video"
 
 
 class UserLogin(BaseModel):
@@ -33,14 +60,34 @@ class UserRefresh(BaseModel):
 
 class UserUpdate(BaseModel):
     username: str | None = Field(None, min_length=3, max_length=32)
-    avatar_url: str | None = None
+    avatar_url: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_URL_MAX_LENGTH, pattern=r"^https?://")
+    profile_media_url: str | None = Field(
+        None,
+        min_length=1,
+        max_length=PROFILE_MEDIA_URL_MAX_LENGTH,
+        pattern=r"^https?://",
+    )
+    profile_media_type: ProfileMediaContentType | None = None
+    profile_media_kind: ProfileMediaKind | None = None
+    profile_media_filename: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_FILENAME_MAX_LENGTH)
+    profile_media_size_bytes: int | None = Field(None, ge=1, le=PROFILE_MEDIA_SIZE_MAX_BYTES)
     bio: str | None = Field(None, max_length=280)
     last_updated: int = Field(default_factory=lambda: int(time.time()))
 
 
 class UserCreate(UserSignup):
     bio: str | None = None
-    avatar_url: str | None = None
+    avatar_url: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_URL_MAX_LENGTH, pattern=r"^https?://")
+    profile_media_url: str | None = Field(
+        None,
+        min_length=1,
+        max_length=PROFILE_MEDIA_URL_MAX_LENGTH,
+        pattern=r"^https?://",
+    )
+    profile_media_type: ProfileMediaContentType | None = None
+    profile_media_kind: ProfileMediaKind | None = None
+    profile_media_filename: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_FILENAME_MAX_LENGTH)
+    profile_media_size_bytes: int | None = Field(None, ge=1, le=PROFILE_MEDIA_SIZE_MAX_BYTES)
     is_email_verified: bool = False
     rank: int | None = None
     date_created: int = Field(default_factory=lambda: int(time.time()))
@@ -57,7 +104,17 @@ class UserOut(BaseModel):
     username: str
     email: EmailStr
     bio: str | None = None
-    avatar_url: str | None = None
+    avatar_url: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_URL_MAX_LENGTH, pattern=r"^https?://")
+    profile_media_url: str | None = Field(
+        None,
+        min_length=1,
+        max_length=PROFILE_MEDIA_URL_MAX_LENGTH,
+        pattern=r"^https?://",
+    )
+    profile_media_type: ProfileMediaContentType | None = None
+    profile_media_kind: ProfileMediaKind | None = None
+    profile_media_filename: str | None = Field(None, min_length=1, max_length=PROFILE_MEDIA_FILENAME_MAX_LENGTH)
+    profile_media_size_bytes: int | None = Field(None, ge=1, le=PROFILE_MEDIA_SIZE_MAX_BYTES)
     is_email_verified: bool = False
     rank: int | None = None
     date_created: Optional[int] = None
@@ -68,6 +125,10 @@ class UserOut(BaseModel):
     def set_dynamic_values(cls, values: dict | "UserOut") -> dict | "UserOut":
         if isinstance(values, dict):
             values["id"] = str(values.get("_id"))
+            if not values.get("profile_media_url") and values.get("avatar_url"):
+                values["profile_media_url"] = values["avatar_url"]
+            if not values.get("avatar_url") and values.get("profile_media_url"):
+                values["avatar_url"] = values["profile_media_url"]
         return values
 
     model_config = ConfigDict(

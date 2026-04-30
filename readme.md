@@ -99,6 +99,27 @@ There is currently **no outbox sweeper**, so `DELAYED` effectively means "lost."
 
 ---
 
+## Profile media uploads
+
+Users can now store profile media on Cloudflare R2. The authenticated endpoint is `POST /users/me/profile-media` and expects multipart form-data with a single `file` field.
+
+- Allowed image formats: `png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`
+- Allowed animation formats: `json` (Lottie JSON), `.lottie`
+- Allowed video formats: `mp4`, `m4v`, `mov`, `webm`, `mkv`
+- Size limits come from `PROFILE_MEDIA_MAX_BYTES` (default 12 MB) and `PROFILE_VIDEO_MAX_BYTES` (default 40 MB)
+
+Returned user payloads now include:
+
+- `profile_media_url`
+- `profile_media_type`
+- `profile_media_kind`
+- `profile_media_filename`
+- `profile_media_size_bytes`
+
+Storage config is environment-driven: `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT_URL`, `R2_BUCKET`, `PUBLIC_BASE_URL`.
+
+---
+
 ## Recovering an unverified account
 
 If the verification email never arrives (broker outage, dropped message, user deleted it), the user must still be able to recover. The recovery loop is: log in → hit `POST /users/verify-email/resend` → receive a fresh token. For this to work, **`verify_token_email_verified` must gate gameplay only, never the recovery path itself.** Today (verified by grep) it gates exactly two routes: `POST /games/matchmaking/queue` and `POST /matches/multiplayer-round`. Login (`/users/login`), the session refresher (`/users/refresh`), `/users/me`, and `/users/verify-email/resend` all use plain `verify_token` and accept unverified accounts.

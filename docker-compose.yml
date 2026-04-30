@@ -3,13 +3,15 @@ version: '3.8'
 services:
   web:
     build: .
-    command: gunicorn -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:7860 --timeout 120 --graceful-timeout 30 main:app
+    command: gunicorn -w 5 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:7880 --timeout 120 --graceful-timeout 30 main:app
     ports:
-      - "7860:7860"
+      - "7880:7880"
     environment:
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
       - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - DB_TYPE=${DB_TYPE}
       - REDIS_URL=${REDIS_URL}
     volumes:
       - .:/app
@@ -17,7 +19,7 @@ services:
       - mongo
       - redis
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:7880/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -25,35 +27,45 @@ services:
 
   worker:
     build: .
-    command: celery -A core.background_task worker --loglevel=info --pool=eventlet --concurrency=10
+    command: celery -A celery_worker worker -l info --pool=custom --concurrency=5
     environment:
+      - CELERY_CUSTOM_WORKER_POOL=celery_aio_pool.pool:AsyncIOPool
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
       - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - DB_TYPE=${DB_TYPE}
       - REDIS_URL=${REDIS_URL}
     volumes:
       - .:/app
     depends_on:
-      - redis
       - mongo
-    stop_grace_period: 60s
+      - redis
 
   mongo:
-    image: mongo:7
+    image: mongo:6.0
+    restart: always
     volumes:
       - mongo_data:/data/db
-    ports:
-      - "27017:27017"
-    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    restart: always
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
+
+  flower:
+    build: .
+    command: celery -A celery_worker.celery_app flower --port=7881
     ports:
-      - "6379:6379"
-    restart: unless-stopped
+      - "7881:7881"
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    depends_on:
+      - redis
+      - worker
 
 volumes:
   mongo_data:

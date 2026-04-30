@@ -17,6 +17,9 @@ class ProfileSummary(BaseModel):
     joinedLabel: str
     bio: str | None = None
     avatar_url: str | None = None
+    profile_media_url: str | None = None
+    profile_media_type: str | None = None
+    profile_media_kind: str | None = None
     isEmailVerified: bool = False
 
 
@@ -61,12 +64,18 @@ class FriendItem(BaseModel):
     name: str
     status: str
     online: bool
+    profile_media_url: str | None = None
+    profile_media_type: str | None = None
+    profile_media_kind: str | None = None
 
 
 class LeaderboardEntryOut(BaseModel):
     rank: int
     name: str
     wins: int
+    profile_media_url: str | None = None
+    profile_media_type: str | None = None
+    profile_media_kind: str | None = None
 
 
 class SocialPageResponse(BaseModel):
@@ -200,6 +209,9 @@ class MatchSessionOpponent(BaseModel):
     initials: str
     name: str
     subtitle: str
+    profile_media_url: str | None = None
+    profile_media_type: str | None = None
+    profile_media_kind: str | None = None
 
 
 class MatchSessionGuess(BaseModel):

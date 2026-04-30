@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, status
 
 from core.config import get_settings
 from core.cookies import clear_auth_cookies, set_auth_cookies
@@ -35,6 +35,7 @@ from services.user_service import (
     update_user_by_id,
     verify_email,
 )
+from services.profile_media_service import upload_profile_media
 
 _DELAYED_EMAIL_MESSAGE = (
     "We couldn't send your verification email right now. "
@@ -94,6 +95,22 @@ async def patch_my_user(
 ) -> APIResponse[UserOut]:
     item = await update_user_by_id(user_id=token.userId, user_data=user_data)
     return ok_response(data=item, message="Profile updated successfully")
+
+
+@router.post(
+    "/me/profile-media",
+    response_model=APIResponse[UserOut],
+    dependencies=[Depends(verify_token)],
+    response_model_exclude_none=True,
+)
+@limiter.limit("10/minute")
+async def upload_my_profile_media(
+    request: Request,
+    file: UploadFile = File(...),
+    token: accessTokenOut = Depends(verify_token),
+) -> APIResponse[UserOut]:
+    item = await upload_profile_media(user_id=token.userId, upload=file)
+    return ok_response(data=item, message="Profile media uploaded successfully")
 
 
 @router.post("/signup", response_model=APIResponse[UserOut], status_code=status.HTTP_201_CREATED)

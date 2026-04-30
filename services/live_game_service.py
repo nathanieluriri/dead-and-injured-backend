@@ -89,24 +89,42 @@ async def _load_powerups(user_id: str | None) -> list[PowerUpItem]:
 
 
 async def _player_name(player_id: str | None) -> tuple[str, str]:
+    profile = await _player_profile(player_id)
+    return (str(profile["name"]), str(profile["initials"]))
+
+
+async def _player_profile(player_id: str | None) -> dict[str, str | None]:
+    blank = {
+        "name": "Unknown",
+        "initials": "UN",
+        "profile_media_url": None,
+        "profile_media_type": None,
+        "profile_media_kind": None,
+    }
     if not player_id or not ObjectId.is_valid(player_id):
-        return ("Unknown", "UN")
+        return blank
     player = await retrieve_player_by_player_id(player_id)
     user_id = player.user_id
     if user_id == "bot":
-        return ("Bot", "BT")
+        return {**blank, "name": "Bot", "initials": "BT"}
     if user_id.startswith("local:"):
-        return ("Pass & Play", "LP")
+        return {**blank, "name": "Pass & Play", "initials": "LP"}
     if user_id.startswith("guest:"):
-        return ("Guest", "GS")
+        return {**blank, "name": "Guest", "initials": "GS"}
     if not ObjectId.is_valid(user_id):
-        return ("Unknown", "UN")
+        return blank
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     if user is None:
-        return ("Unknown", "UN")
+        return blank
     username = str(user["username"])
     initials = "".join(part[0].upper() for part in username.replace(".", " ").split()[:2]) or username[:2].upper()
-    return (username, initials)
+    return {
+        "name": username,
+        "initials": initials,
+        "profile_media_url": user.get("profile_media_url") or user.get("avatar_url"),
+        "profile_media_type": user.get("profile_media_type"),
+        "profile_media_kind": user.get("profile_media_kind") or ("image" if user.get("avatar_url") else None),
+    }
 
 
 async def create_single_player_game(user_id: str | None) -> MatchSessionResponse:
@@ -287,7 +305,9 @@ async def build_match_session(game_id: str, viewer_user_id: str | None) -> Match
     else:
         opponent_player_id = creator_player_id
 
-    opponent_name, opponent_initials = await _player_name(opponent_player_id)
+    opponent_profile = await _player_profile(opponent_player_id)
+    opponent_name = str(opponent_profile["name"])
+    opponent_initials = str(opponent_profile["initials"])
     matches = await retrieve_matchs(game_id, 0, 100)
     ghost_ids: set[str] = set()
     async for doc in db.matchs.find({"game_id": game_id, "ghost": True}, {"_id": 1}):
@@ -329,6 +349,9 @@ async def build_match_session(game_id: str, viewer_user_id: str | None) -> Match
             initials=opponent_initials,
             name=opponent_name,
             subtitle=_subtitle_from_mode(mode),
+            profile_media_url=opponent_profile["profile_media_url"],
+            profile_media_type=opponent_profile["profile_media_type"],
+            profile_media_kind=opponent_profile["profile_media_kind"],
         ),
         history=history,
         loadout=loadout,

@@ -247,6 +247,9 @@ async def build_profile_page(user_id: str) -> ProfilePageResponse:
         joinedLabel=f"Joined {datetime.fromtimestamp(user.date_created, tz=timezone.utc):%b %Y}" if user.date_created else "Joined recently",
         bio=user.bio,
         avatar_url=user.avatar_url,
+        profile_media_url=user.profile_media_url,
+        profile_media_type=user.profile_media_type,
+        profile_media_kind=user.profile_media_kind,
         isEmailVerified=bool(user.is_email_verified),
     )
     stats = [
@@ -272,7 +275,18 @@ async def build_social_page(user_id: str) -> SocialPageResponse:
         status = "Online" if is_online else "Last seen recently"
         if presence and presence.get("status"):
             status = str(presence["status"])
-        friends.append(FriendItem(id=other_user.id, name=other_user.username, status=status, online=is_online))
+        friends.append(
+            FriendItem(
+                id=other_user.id,
+                name=other_user.username,
+                status=status,
+                online=is_online,
+                profile_media_url=other_user.profile_media_url or other_user.avatar_url,
+                profile_media_type=other_user.profile_media_type,
+                profile_media_kind=other_user.profile_media_kind
+                or ("image" if other_user.avatar_url else None),
+            )
+        )
 
     leaders = await get_leaderboards(start=0, stop=5)
     leader_items: list[LeaderboardEntryOut] = []
@@ -283,6 +297,14 @@ async def build_social_page(user_id: str) -> SocialPageResponse:
                 rank=entry.rank,
                 name=leader_user.username if leader_user else entry.email.split("@")[0],
                 wins=entry.wins,
+                profile_media_url=(leader_user.profile_media_url or leader_user.avatar_url) if leader_user else None,
+                profile_media_type=leader_user.profile_media_type if leader_user else None,
+                profile_media_kind=(
+                    leader_user.profile_media_kind
+                    or ("image" if leader_user.avatar_url else None)
+                )
+                if leader_user
+                else None,
             )
         )
     return SocialPageResponse(friends=friends, leaders=leader_items)

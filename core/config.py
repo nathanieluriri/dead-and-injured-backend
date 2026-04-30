@@ -43,6 +43,13 @@ class Settings:
     resend_api_key: str
     resend_from_email: str
     resend_from_name: str
+    r2_access_key_id: str
+    r2_secret_access_key: str
+    r2_endpoint_url: str
+    r2_bucket: str
+    public_base_url: str
+    profile_media_max_bytes: int
+    profile_video_max_bytes: int
     max_user_page_size: int
     redis_url: str
     celery_broker_url: str
@@ -98,6 +105,13 @@ class Settings:
             resend_api_key=os.getenv("RESEND_API_KEY", ""),
             resend_from_email=os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev"),
             resend_from_name=os.getenv("RESEND_FROM_NAME", "Dead & Injured"),
+            r2_access_key_id=os.getenv("R2_ACCESS_KEY_ID", ""),
+            r2_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY", ""),
+            r2_endpoint_url=os.getenv("R2_ENDPOINT_URL", ""),
+            r2_bucket=os.getenv("R2_BUCKET", ""),
+            public_base_url=os.getenv("PUBLIC_BASE_URL", ""),
+            profile_media_max_bytes=int(os.getenv("PROFILE_MEDIA_MAX_BYTES", str(12 * 1024 * 1024))),
+            profile_video_max_bytes=int(os.getenv("PROFILE_VIDEO_MAX_BYTES", str(40 * 1024 * 1024))),
             max_user_page_size=int(os.getenv("MAX_USER_PAGE_SIZE", "100")),
             redis_url=redis_url,
             celery_broker_url=os.getenv("CELERY_BROKER_URL", redis_url),
