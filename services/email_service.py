@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import enum
 import logging
-import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.utils import formataddr
 from urllib.parse import urlencode
+
+import resend
 
 from core.config import get_settings
 from email_templates.changing_password_template import generate_changing_password_email_from_template
@@ -34,78 +31,23 @@ def _build_link(base_url: str, token: str) -> str:
     return f"{base_url}?{urlencode({'token': token})}"
 
 
-def _smtp_settings() -> dict[str, str | int] | None:
-    username = os.getenv("EMAIL_USERNAME")
-    password = os.getenv("EMAIL_PASSWORD")
-    host = os.getenv("EMAIL_HOST")
-    port = os.getenv("EMAIL_PORT")
-    if not all([username, password, host, port]):
-        return None
-    return {
-        "username": username,
-        "password": password,
-        "host": host,
-        "port": int(port),
-    }
-
-
-def _send_html_email(
-    sender_email: str,
-    sender_display_name: str,
-    receiver_email: str,
-    subject: str,
-    html_content: str,
-    plain_text_content: str,
-    smtp_server: str,
-    smtp_port: int,
-    smtp_login: str,
-    smtp_password: str,
-) -> None:
-    formatted_from_address = formataddr((sender_display_name, sender_email))
-    msg = MIMEMultipart("alternative")
-    msg["From"] = formatted_from_address
-    msg["To"] = receiver_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(plain_text_content, "plain"))
-    msg.attach(MIMEText(html_content, "html"))
-
-    server = None
-    try:
-        if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-        elif smtp_port in (25, 587):
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-        else:
-            raise ValueError("Unsupported SMTP port. Use 465, 587, or 25.")
-
-        server.login(smtp_login, smtp_password)
-        server.sendmail(sender_email, receiver_email, msg.as_string())
-    finally:
-        if server:
-            server.quit()
-
-
 def _deliver(subject: str, receiver_email: str, html_body: str, plain_text: str) -> None:
-    smtp = _smtp_settings()
-    if smtp is None:
-        logger.warning("Skipping email delivery because SMTP settings are incomplete")
+    settings = get_settings()
+    if not settings.resend_api_key:
+        logger.warning("Skipping email delivery because RESEND_API_KEY is not set")
         return
 
-    _send_html_email(
-        sender_email=str(smtp["username"]),
-        sender_display_name="Dead & Injured",
-        receiver_email=receiver_email,
-        subject=subject,
-        html_content=html_body,
-        plain_text_content=plain_text,
-        smtp_server=str(smtp["host"]),
-        smtp_port=int(smtp["port"]),
-        smtp_login=str(smtp["username"]),
-        smtp_password=str(smtp["password"]),
+    resend.api_key = settings.resend_api_key
+    response = resend.Emails.send(
+        {
+            "from": f"{settings.resend_from_name} <{settings.resend_from_email}>",
+            "to": [receiver_email],
+            "subject": subject,
+            "html": html_body,
+            "text": plain_text,
+        }
     )
+    logger.info("Resend email accepted: to=%s subject=%s response=%s", receiver_email, subject, response)
 
 
 def send_new_signin_email(receiver_email: str, username: str) -> None:

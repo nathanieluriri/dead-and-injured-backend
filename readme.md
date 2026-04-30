@@ -31,7 +31,7 @@ docker compose up -d        # Mongo, Redis, worker
 uvicorn main:app --reload   # API on :8000
 ```
 
-Configuration is environment-driven; see [`core/config.py`](core/config.py) for the full list. At boot, the resolved non-secret settings (`ENV`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, CORS origins, prefixes) are logged so misconfiguration shows up in the container logs instead of silently defaulting.
+Configuration is environment-driven; see [`core/config.py`](core/config.py) for the full list. Email delivery uses Resend via `RESEND_API_KEY`, with optional `RESEND_FROM_EMAIL` and `RESEND_FROM_NAME` overrides. At boot, the resolved non-secret settings (`ENV`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, CORS origins, prefixes) are logged so misconfiguration shows up in the container logs instead of silently defaulting.
 
 ---
 

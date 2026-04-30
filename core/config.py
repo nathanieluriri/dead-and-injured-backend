@@ -40,6 +40,9 @@ class Settings:
     password_reset_ttl_minutes: int
     password_reset_url: str
     email_verification_url: str
+    resend_api_key: str
+    resend_from_email: str
+    resend_from_name: str
     max_user_page_size: int
     redis_url: str
     celery_broker_url: str
@@ -92,6 +95,9 @@ class Settings:
                 "EMAIL_VERIFICATION_URL",
                 "http://localhost:3000/verify-email",
             ),
+            resend_api_key=os.getenv("RESEND_API_KEY", ""),
+            resend_from_email=os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev"),
+            resend_from_name=os.getenv("RESEND_FROM_NAME", "Dead & Injured"),
             max_user_page_size=int(os.getenv("MAX_USER_PAGE_SIZE", "100")),
             redis_url=redis_url,
             celery_broker_url=os.getenv("CELERY_BROKER_URL", redis_url),
