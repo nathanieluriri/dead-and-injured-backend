@@ -338,6 +338,17 @@ async def build_match_session(game_id: str, viewer_user_id: str | None) -> Match
     can_guess = game.get("status") == "started" and game.get("last_player_id") != viewer_player_id
     if not matches and viewer_player_id != creator_player_id:
         can_guess = False
+
+    # Once the game is completed, `last_player_id` is the winner (set by
+    # _complete_game). Surface a definitive outcome so both players — winner and
+    # loser — get a resolved end screen rather than a frozen board.
+    outcome: Literal["won", "lost"] | None = None
+    winner_player_id: str | None = None
+    if game.get("status") == GameStatus.completed.value:
+        winner_player_id = game.get("last_player_id")
+        if winner_player_id and viewer_player_id:
+            outcome = "won" if winner_player_id == viewer_player_id else "lost"
+
     loadout = await _load_powerups(viewer_user_key)
     return MatchSessionResponse(
         id=game_id,
@@ -345,6 +356,8 @@ async def build_match_session(game_id: str, viewer_user_id: str | None) -> Match
         status=str(game.get("status", "waiting")),
         canGuess=can_guess,
         viewerPlayerId=viewer_player_id,
+        outcome=outcome,
+        winnerPlayerId=winner_player_id,
         opponent=MatchSessionOpponent(
             initials=opponent_initials,
             name=opponent_name,
@@ -362,7 +375,21 @@ async def build_match_session(game_id: str, viewer_user_id: str | None) -> Match
 
 
 async def submit_guess(game_id: str, guess: str, viewer_user_id: str | None, viewer_player_id: str | None = None) -> MatchGuessResponse:
-    if viewer_player_id is None:
+    game = await _raw_game(game_id)
+    mode = _mode_from_game_doc(game)
+    # For networked multiplayer (ranked / friend), never trust a client-supplied
+    # player id — always resolve the player from the authenticated session, or a
+    # caller could submit guesses as their opponent. Local pass-and-play and the
+    # single-player bot board are device-local and legitimately drive both seats
+    # from one client, so the explicit id is honoured there.
+    if mode in {"online", "friend"}:
+        if viewer_user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        player = await retrieve_player_for_user_in_game(user_id=viewer_user_id, game_id=game_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found for game")
+        viewer_player_id = player.id
+    elif viewer_player_id is None:
         if viewer_user_id is None:
             raise HTTPException(status_code=401, detail="Authentication required")
         player = await retrieve_player_for_user_in_game(user_id=viewer_user_id, game_id=game_id)
@@ -380,8 +407,10 @@ async def submit_guess(game_id: str, guess: str, viewer_user_id: str | None, vie
     else:
         reported_dead, reported_injured, reported_solved = match.dead, match.injured, match.dead == len(match.guess)
     game = await retrieve_game_by_game_id(game_id)
+    all_matches = await retrieve_matchs(game_id, 0, 200)
+    viewer_attempts = sum(1 for m in all_matches if m.player_id == viewer_player_id)
     return MatchGuessResponse(
-        attempt=len(await retrieve_matchs(game_id, 0, 200)),
+        attempt=viewer_attempts,
         dead=reported_dead,
         injured=reported_injured,
         solved=reported_solved,

@@ -228,6 +228,11 @@ class MatchSessionResponse(BaseModel):
     status: str
     canGuess: bool
     viewerPlayerId: str | None = None
+    # Server-authoritative result, only set once the game is completed. Lets the
+    # client render a definitive win/lose screen instead of inferring it from the
+    # last guess (which never resolves the losing player's view).
+    outcome: Literal["won", "lost"] | None = None
+    winnerPlayerId: str | None = None
     opponent: MatchSessionOpponent
     history: list[MatchSessionGuess]
     loadout: list[PowerUpItem]

@@ -16,7 +16,7 @@ from services.presence_service import reset_for_game_participants
 from repositories.match import create_match, delete_match, get_latest_match, get_match, get_matchs, update_match
 from repositories.secret import get_secret
 from repositories.scores import create_scores
-from schemas.game import GameStatus, GameUpdate
+from schemas.game import GameStatus, GameType, GameUpdate
 from schemas.match import MatchBase, MatchCreate, MatchOut, MatchResult, MatchUpdate, Player
 from schemas.scores import ScoresBase, ScoresCreate
 
@@ -86,10 +86,21 @@ async def _record_match(current_game, match_data: MatchBase) -> MatchOut:
     player = Player(code=opponents_secret.secret)
     guess_result = player.guess_result(guess=match_data.guess)
 
+    # The win threshold is the length of the secret, not a hardcoded 4, so that
+    # variable-length game modes (practice/puzzle) resolve correctly too.
+    secret_length = len(str(opponents_secret.secret))
+    is_win = guess_result.dead == secret_length
+    # Single-player (vs bot) games have no real opponent turn: the bot only holds
+    # a secret and never guesses. If we handed the "last turn" back to the human
+    # the next guess would be rejected as "not your turn", soft-locking the board
+    # after a single guess. Attribute the turn to the (idle) opponent instead so
+    # the human can keep guessing freely.
+    is_single_player = current_game.settings.game_type == GameType.single_player
+
     is_ghost = await consume_modifier(match_data.game_id, match_data.player_id, "ghost_guess")
     await consume_modifier(match_data.game_id, match_data.player_id, "fog")
 
-    if guess_result.dead == 4:
+    if is_win:
         await _complete_game(
             game_id=match_data.game_id,
             winner_player_id=match_data.player_id,
@@ -98,7 +109,12 @@ async def _record_match(current_game, match_data: MatchBase) -> MatchOut:
         await clear_modifiers_for_game(match_data.game_id)
     else:
         has_extra_turn = await consume_modifier(match_data.game_id, match_data.player_id, "extra_turn")
-        next_last_player_id = current_game.last_player_id if has_extra_turn else match_data.player_id
+        if is_single_player:
+            next_last_player_id = opponent_player_id
+        elif has_extra_turn:
+            next_last_player_id = current_game.last_player_id
+        else:
+            next_last_player_id = match_data.player_id
         await update_game(
             filter_dict={"_id": ObjectId(match_data.game_id)},
             game_data=GameUpdate(last_player_id=next_last_player_id),
@@ -118,7 +134,7 @@ async def _record_match(current_game, match_data: MatchBase) -> MatchOut:
     await db.match_events.insert_one(
         {
             "game_id": match_data.game_id,
-            "event": "end" if guess_result.dead == 4 else "guess",
+            "event": "end" if is_win else "guess",
             "payload": {
                 "player_id": match_data.player_id,
                 "guess": match_data.guess,
