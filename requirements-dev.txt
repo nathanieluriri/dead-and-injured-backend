@@ -1,0 +1,4 @@
+# Test-only dependencies (installed in CI on top of requirements.txt)
+pytest==8.3.4
+pytest-asyncio==0.24.0
+mongomock-motor==0.0.35
